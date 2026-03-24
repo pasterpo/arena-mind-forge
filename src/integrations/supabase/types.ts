@@ -317,6 +317,35 @@ export type Database = {
           },
         ]
       }
+      tournament_participants: {
+        Row: {
+          id: string
+          registered_at: string
+          tournament_id: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          registered_at?: string
+          tournament_id: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          registered_at?: string
+          tournament_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_participants_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tournament_questions: {
         Row: {
           id: string
@@ -366,6 +395,7 @@ export type Database = {
           telegram_link: string | null
           time_limit_minutes: number
           title: string
+          tournament_type: Database["public"]["Enums"]["tournament_type"]
           updated_at: string
         }
         Insert: {
@@ -380,6 +410,7 @@ export type Database = {
           telegram_link?: string | null
           time_limit_minutes?: number
           title: string
+          tournament_type?: Database["public"]["Enums"]["tournament_type"]
           updated_at?: string
         }
         Update: {
@@ -394,6 +425,7 @@ export type Database = {
           telegram_link?: string | null
           time_limit_minutes?: number
           title?: string
+          tournament_type?: Database["public"]["Enums"]["tournament_type"]
           updated_at?: string
         }
         Relationships: []
@@ -447,6 +479,7 @@ export type Database = {
         | "geometry"
       question_visibility: "draft" | "published"
       tournament_status: "upcoming" | "active" | "completed"
+      tournament_type: "tournament" | "olympiad" | "jee"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -586,6 +619,7 @@ export const Constants = {
       ],
       question_visibility: ["draft", "published"],
       tournament_status: ["upcoming", "active", "completed"],
+      tournament_type: ["tournament", "olympiad", "jee"],
     },
   },
 } as const
