@@ -15,8 +15,8 @@ const QuestionBankBrowser = () => {
 
   const fetchQuestions = async () => {
     let query = supabase.from("question_bank").select("*").order("created_at", { ascending: false });
-    if (categoryFilter !== "all") query = query.eq("category", categoryFilter);
-    if (visibilityFilter !== "all") query = query.eq("visibility", visibilityFilter);
+    if (categoryFilter !== "all") query = query.eq("category", categoryFilter as any);
+    if (visibilityFilter !== "all") query = query.eq("visibility", visibilityFilter as any);
     const { data } = await query;
     if (data) setQuestions(data);
   };
