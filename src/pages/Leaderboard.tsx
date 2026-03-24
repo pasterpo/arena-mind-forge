@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
-import { TierBadge } from "@/lib/tiers";
+import { TierBadge } from "@/components/TierBadge";
 import { Search, Trophy } from "lucide-react";
 
 const Leaderboard = () => {
