@@ -14,6 +14,71 @@ export type Database = {
   }
   public: {
     Tables: {
+      discussion_replies: {
+        Row: {
+          body: string
+          created_at: string
+          discussion_id: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          discussion_id: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          discussion_id?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "discussion_replies_discussion_id_fkey"
+            columns: ["discussion_id"]
+            isOneToOne: false
+            referencedRelation: "discussions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      discussions: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          locked: boolean
+          pinned: boolean
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          locked?: boolean
+          pinned?: boolean
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          locked?: boolean
+          pinned?: boolean
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       elo_history: {
         Row: {
           created_at: string
@@ -48,6 +113,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      moderator_permissions: {
+        Row: {
+          can_create_problems: boolean
+          can_create_tournaments: boolean
+          can_delete_problems: boolean
+          can_edit_problems: boolean
+          can_edit_tournaments: boolean
+          can_manage_users: boolean
+          can_moderate_discussions: boolean
+          can_view_discussions: boolean
+          created_at: string
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          can_create_problems?: boolean
+          can_create_tournaments?: boolean
+          can_delete_problems?: boolean
+          can_edit_problems?: boolean
+          can_edit_tournaments?: boolean
+          can_manage_users?: boolean
+          can_moderate_discussions?: boolean
+          can_view_discussions?: boolean
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          can_create_problems?: boolean
+          can_create_tournaments?: boolean
+          can_delete_problems?: boolean
+          can_edit_problems?: boolean
+          can_edit_tournaments?: boolean
+          can_manage_users?: boolean
+          can_moderate_discussions?: boolean
+          can_view_discussions?: boolean
+          created_at?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       penalty_logs: {
         Row: {
@@ -253,6 +363,7 @@ export type Database = {
           id: string
           start_timestamp: string
           status: Database["public"]["Enums"]["tournament_status"]
+          telegram_link: string | null
           time_limit_minutes: number
           title: string
           updated_at: string
@@ -266,6 +377,7 @@ export type Database = {
           id?: string
           start_timestamp: string
           status?: Database["public"]["Enums"]["tournament_status"]
+          telegram_link?: string | null
           time_limit_minutes?: number
           title: string
           updated_at?: string
@@ -279,6 +391,7 @@ export type Database = {
           id?: string
           start_timestamp?: string
           status?: Database["public"]["Enums"]["tournament_status"]
+          telegram_link?: string | null
           time_limit_minutes?: number
           title?: string
           updated_at?: string
