@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useNavigate } from "react-router-dom";
-import { Clock, Swords, Trophy, Users } from "lucide-react";
+import { Clock, Swords, Trophy, Users, ExternalLink } from "lucide-react";
 import { differenceInSeconds, format } from "date-fns";
 
 const Index = () => {
@@ -83,7 +83,7 @@ const Index = () => {
                     </div>
                     <CardDescription>{t.description}</CardDescription>
                   </CardHeader>
-                  <CardContent>
+                  <CardContent className="space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Clock className="h-4 w-4" />
@@ -96,6 +96,11 @@ const Index = () => {
                         Enter Battle
                       </Button>
                     </div>
+                    {t.telegram_link && (
+                      <a href={t.telegram_link} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:underline flex items-center gap-1">
+                        <ExternalLink className="h-3 w-3" /> Join Telegram Channel
+                      </a>
+                    )}
                   </CardContent>
                 </Card>
               ))}
@@ -135,6 +140,11 @@ const Index = () => {
                     <div className="text-gold font-mono text-lg font-bold">
                       {formatCountdown(t.start_timestamp)}
                     </div>
+                    {t.telegram_link && (
+                      <a href={t.telegram_link} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:underline flex items-center gap-1">
+                        <ExternalLink className="h-3 w-3" /> Telegram Channel
+                      </a>
+                    )}
                   </CardContent>
                 </Card>
               ))}

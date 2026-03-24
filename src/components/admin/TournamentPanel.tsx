@@ -7,11 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Plus, ExternalLink, Play, CheckCircle2, Trash2 } from "lucide-react";
 
 const TournamentPanel = () => {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [tournaments, setTournaments] = useState<any[]>([]);
   const [questions, setQuestions] = useState<any[]>([]);
   const [title, setTitle] = useState("");
@@ -19,6 +20,7 @@ const TournamentPanel = () => {
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [timeLimit, setTimeLimit] = useState("60");
+  const [telegramLink, setTelegramLink] = useState("");
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
   const [categoryFilter, setCategoryFilter] = useState("");
   const [creating, setCreating] = useState(false);
@@ -40,15 +42,19 @@ const TournamentPanel = () => {
     }
     setCreating(true);
     try {
-      const { data: t, error } = await supabase.from("tournaments").insert({
+      const insertData: any = {
         title,
         description,
         start_timestamp: new Date(startTime).toISOString(),
         end_timestamp: new Date(endTime).toISOString(),
         time_limit_minutes: parseInt(timeLimit),
         created_by: user.id,
-      }).select().single();
+      };
+      if (telegramLink.trim()) {
+        insertData.telegram_link = telegramLink.trim();
+      }
 
+      const { data: t, error } = await supabase.from("tournaments").insert(insertData).select().single();
       if (error) throw error;
 
       if (selectedQuestions.size > 0) {
@@ -62,7 +68,7 @@ const TournamentPanel = () => {
       }
 
       toast.success("Tournament created!");
-      setTitle(""); setDescription(""); setStartTime(""); setEndTime("");
+      setTitle(""); setDescription(""); setStartTime(""); setEndTime(""); setTelegramLink("");
       setSelectedQuestions(new Set());
       fetchData();
     } catch (err: any) {
@@ -70,6 +76,29 @@ const TournamentPanel = () => {
     } finally {
       setCreating(false);
     }
+  };
+
+  const updateStatus = async (id: string, status: string) => {
+    const { error } = await supabase.from("tournaments").update({ status: status as any }).eq("id", id);
+    if (error) {
+      toast.error("Error: " + error.message);
+    } else {
+      toast.success(`Tournament marked as ${status}.`);
+      if (status === "completed") {
+        // Trigger Elo calculation
+        const { error: eloErr } = await supabase.rpc("calculate_elo_changes", { p_tournament_id: id });
+        if (eloErr) toast.error("Elo calculation error: " + eloErr.message);
+        else toast.success("Elo ratings updated!");
+      }
+      fetchData();
+    }
+  };
+
+  const deleteTournament = async (id: string) => {
+    await supabase.from("tournament_questions").delete().eq("tournament_id", id);
+    await supabase.from("tournaments").delete().eq("id", id);
+    toast.success("Tournament deleted.");
+    fetchData();
   };
 
   const toggleQuestion = (qId: string) => {
@@ -114,6 +143,10 @@ const TournamentPanel = () => {
             <Label>Description</Label>
             <Input value={description} onChange={e => setDescription(e.target.value)} placeholder="Optional description" className="bg-secondary border-border" />
           </div>
+          <div className="space-y-2">
+            <Label>Telegram Link (optional — shown publicly with tournament)</Label>
+            <Input value={telegramLink} onChange={e => setTelegramLink(e.target.value)} placeholder="https://t.me/YourChannel" className="bg-secondary border-border" />
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label>Start Time (UTC)</Label>
@@ -128,7 +161,7 @@ const TournamentPanel = () => {
           {/* Question Selector */}
           <div className="space-y-2">
             <Label>Select Questions ({selectedQuestions.size} selected)</Label>
-            <div className="flex gap-2 mb-2">
+            <div className="flex gap-2 mb-2 flex-wrap">
               {["", "number_theory", "algebra", "combinatorics", "geometry"].map(c => (
                 <Button
                   key={c}
@@ -171,16 +204,40 @@ const TournamentPanel = () => {
           <CardTitle className="font-display text-lg">Existing Tournaments</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {tournaments.map(t => (
-              <div key={t.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border">
-                <div>
-                  <p className="font-medium text-foreground">{t.title}</p>
-                  <p className="text-xs text-muted-foreground">{t.time_limit_minutes} min</p>
+              <div key={t.id} className="p-4 rounded-lg bg-secondary/30 border border-border space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-foreground">{t.title}</p>
+                      <Badge className={statusColor[t.status] || ""}>{t.status}</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">{t.time_limit_minutes} min • {t.description || "No description"}</p>
+                    {t.telegram_link && (
+                      <a href={t.telegram_link} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:underline flex items-center gap-1 mt-1">
+                        <ExternalLink className="h-3 w-3" /> {t.telegram_link}
+                      </a>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {t.status === "upcoming" && (
+                      <Button variant="ghost" size="sm" onClick={() => updateStatus(t.id, "active")} className="text-green-400 hover:text-green-300">
+                        <Play className="h-4 w-4 mr-1" /> Activate
+                      </Button>
+                    )}
+                    {t.status === "active" && (
+                      <Button variant="ghost" size="sm" onClick={() => updateStatus(t.id, "completed")} className="text-gold hover:text-gold/80">
+                        <CheckCircle2 className="h-4 w-4 mr-1" /> Complete
+                      </Button>
+                    )}
+                    {isAdmin && (
+                      <Button variant="ghost" size="icon" onClick={() => deleteTournament(t.id)} className="text-destructive">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
-                <Badge className={statusColor[t.status] || ""}>
-                  {t.status}
-                </Badge>
               </div>
             ))}
             {tournaments.length === 0 && (
