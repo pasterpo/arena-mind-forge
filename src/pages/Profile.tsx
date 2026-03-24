@@ -2,14 +2,19 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { TierBadge } from "@/components/TierBadge";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { Trophy, TrendingUp, AlertTriangle, Hash } from "lucide-react";
+import { Trophy, TrendingUp, AlertTriangle, Hash, Swords, CheckCircle, XCircle, Eye } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { format } from "date-fns";
 
 const Profile = () => {
   const { user } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [eloHistory, setEloHistory] = useState<any[]>([]);
+  const [pastTournaments, setPastTournaments] = useState<any[]>([]);
 
   useEffect(() => {
     if (!user) return;
@@ -23,22 +28,28 @@ const Profile = () => {
         .eq("user_id", user.id)
         .order("created_at", { ascending: true });
       if (h) setEloHistory(h);
+
+      // Past tournament participation
+      const { data: parts } = await supabase
+        .from("tournament_participants")
+        .select("tournament_id, tournaments(*)")
+        .eq("user_id", user.id);
+
+      if (parts) {
+        const completed = parts
+          .filter((p: any) => p.tournaments?.status === "completed")
+          .map((p: any) => p.tournaments);
+        setPastTournaments(completed);
+      }
     };
     fetchData();
   }, [user]);
 
-  if (!profile) {
-    return (
-      <div className="container py-16 text-center text-muted-foreground">Loading profile...</div>
-    );
-  }
+  if (!profile) return <div className="container py-16 text-center text-muted-foreground">Loading profile...</div>;
 
   const chartData = [
     { name: "Start", elo: 1200 },
-    ...eloHistory.map((h: any) => ({
-      name: h.tournaments?.title || "Tournament",
-      elo: h.elo_after,
-    })),
+    ...eloHistory.map((h: any) => ({ name: h.tournaments?.title || "Tournament", elo: h.elo_after })),
   ];
 
   return (
@@ -54,7 +65,6 @@ const Profile = () => {
             <p className="text-xl font-semibold text-foreground">{profile.username}</p>
           </CardContent>
         </Card>
-
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground font-sans flex items-center gap-1">
@@ -66,7 +76,6 @@ const Profile = () => {
             <TierBadge elo={profile.elo_rating} />
           </CardContent>
         </Card>
-
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground font-sans flex items-center gap-1">
@@ -74,12 +83,9 @@ const Profile = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold font-mono text-foreground">
-              #{profile.global_rank || "—"}
-            </p>
+            <p className="text-3xl font-bold font-mono text-foreground">#{profile.global_rank || "—"}</p>
           </CardContent>
         </Card>
-
         <Card className="bg-card border-border">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground font-sans flex items-center gap-1">
@@ -96,8 +102,7 @@ const Profile = () => {
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="font-display flex items-center gap-2">
-            <Trophy className="h-5 w-5 text-gold" />
-            Rating Progression
+            <Trophy className="h-5 w-5 text-gold" /> Rating Progression
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -116,9 +121,37 @@ const Profile = () => {
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-center py-12 text-muted-foreground">
-              No tournament history yet. Compete to see your rating progression.
-            </p>
+            <p className="text-center py-12 text-muted-foreground">No tournament history yet. Compete to see your progression.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Past Tournaments */}
+      <Card className="bg-card border-border">
+        <CardHeader>
+          <CardTitle className="font-display flex items-center gap-2">
+            <Swords className="h-5 w-5 text-bronze" /> Past Competitions
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {pastTournaments.length > 0 ? (
+            <div className="space-y-2">
+              {pastTournaments.map((t: any) => (
+                <div key={t.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border">
+                  <div>
+                    <p className="font-medium text-foreground">{t.title}</p>
+                    <p className="text-xs text-muted-foreground">{format(new Date(t.end_timestamp), "MMM d, yyyy")}</p>
+                  </div>
+                  <Link to={`/results/${t.id}`}>
+                    <Button variant="ghost" size="sm" className="text-gold hover:text-gold/80">
+                      <Eye className="h-4 w-4 mr-1" /> Results
+                    </Button>
+                  </Link>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-center py-8 text-muted-foreground">No past competitions. Enter a tournament to build your history!</p>
           )}
         </CardContent>
       </Card>

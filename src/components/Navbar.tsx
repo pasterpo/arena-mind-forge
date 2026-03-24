@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Shield, Trophy, User, LogOut, Swords } from "lucide-react";
+import { Shield, Trophy, User, LogOut, Swords, MessageSquare, History } from "lucide-react";
 
 const Navbar = () => {
   const { user, isAdminOrMod, signOut } = useAuth();
@@ -12,6 +12,8 @@ const Navbar = () => {
   const navItems = [
     { path: "/", label: "The Arena", icon: Swords },
     { path: "/leaderboard", label: "Leaderboard", icon: Trophy },
+    { path: "/past", label: "Past", icon: History },
+    { path: "/discussions", label: "Discuss", icon: MessageSquare },
     { path: "/profile", label: "Profile", icon: User },
   ];
 
@@ -28,12 +30,12 @@ const Navbar = () => {
           <div className="h-8 w-8 rounded-full gradient-gold flex items-center justify-center">
             <span className="font-display text-sm font-bold text-primary-foreground">A</span>
           </div>
-          <span className="font-display text-lg font-semibold text-foreground tracking-wide">
+          <span className="font-display text-lg font-semibold text-foreground tracking-wide hidden sm:inline">
             Aletheia Arena
           </span>
         </Link>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 overflow-x-auto">
           {navItems.map(({ path, label, icon: Icon }) => (
             <Link key={path} to={path}>
               <Button
@@ -42,7 +44,7 @@ const Navbar = () => {
                 className={isActive(path) ? "text-gold" : "text-muted-foreground hover:text-foreground"}
               >
                 <Icon className="h-4 w-4 mr-1" />
-                <span className="hidden sm:inline">{label}</span>
+                <span className="hidden md:inline">{label}</span>
               </Button>
             </Link>
           ))}
@@ -63,8 +65,7 @@ const Navbar = () => {
             <DropdownMenuContent align="end" className="w-48">
               <DropdownMenuItem className="text-xs text-muted-foreground">{user.email}</DropdownMenuItem>
               <DropdownMenuItem onClick={signOut} className="text-destructive">
-                <LogOut className="h-4 w-4 mr-2" />
-                Sign Out
+                <LogOut className="h-4 w-4 mr-2" /> Sign Out
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
