@@ -9,18 +9,20 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Plus, ExternalLink, Play, CheckCircle2, Trash2 } from "lucide-react";
+import { Plus, ExternalLink, Play, CheckCircle2, Trash2, Users } from "lucide-react";
 
 const TournamentPanel = () => {
   const { user, isAdmin } = useAuth();
   const [tournaments, setTournaments] = useState<any[]>([]);
   const [questions, setQuestions] = useState<any[]>([]);
+  const [participantCounts, setParticipantCounts] = useState<Record<string, number>>({});
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
   const [timeLimit, setTimeLimit] = useState("60");
   const [telegramLink, setTelegramLink] = useState("");
+  const [tournamentType, setTournamentType] = useState("tournament");
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
   const [categoryFilter, setCategoryFilter] = useState("");
   const [creating, setCreating] = useState(false);
@@ -31,6 +33,13 @@ const TournamentPanel = () => {
 
     const { data: q } = await supabase.from("question_bank").select("*").eq("visibility", "published").order("created_at", { ascending: false });
     if (q) setQuestions(q);
+
+    const { data: parts } = await supabase.from("tournament_participants").select("tournament_id");
+    if (parts) {
+      const counts: Record<string, number> = {};
+      parts.forEach((p: any) => { counts[p.tournament_id] = (counts[p.tournament_id] || 0) + 1; });
+      setParticipantCounts(counts);
+    }
   };
 
   useEffect(() => { fetchData(); }, []);
@@ -49,10 +58,9 @@ const TournamentPanel = () => {
         end_timestamp: new Date(endTime).toISOString(),
         time_limit_minutes: parseInt(timeLimit),
         created_by: user.id,
+        tournament_type: tournamentType,
       };
-      if (telegramLink.trim()) {
-        insertData.telegram_link = telegramLink.trim();
-      }
+      if (telegramLink.trim()) insertData.telegram_link = telegramLink.trim();
 
       const { data: t, error } = await supabase.from("tournaments").insert(insertData).select().single();
       if (error) throw error;
@@ -67,7 +75,7 @@ const TournamentPanel = () => {
         if (tqError) throw tqError;
       }
 
-      toast.success("Tournament created!");
+      toast.success("Created successfully!");
       setTitle(""); setDescription(""); setStartTime(""); setEndTime(""); setTelegramLink("");
       setSelectedQuestions(new Set());
       fetchData();
@@ -83,11 +91,10 @@ const TournamentPanel = () => {
     if (error) {
       toast.error("Error: " + error.message);
     } else {
-      toast.success(`Tournament marked as ${status}.`);
+      toast.success(`Marked as ${status}.`);
       if (status === "completed") {
-        // Trigger Elo calculation
         const { error: eloErr } = await supabase.rpc("calculate_elo_changes", { p_tournament_id: id });
-        if (eloErr) toast.error("Elo calculation error: " + eloErr.message);
+        if (eloErr) toast.error("Elo error: " + eloErr.message);
         else toast.success("Elo ratings updated!");
       }
       fetchData();
@@ -97,7 +104,7 @@ const TournamentPanel = () => {
   const deleteTournament = async (id: string) => {
     await supabase.from("tournament_questions").delete().eq("tournament_id", id);
     await supabase.from("tournaments").delete().eq("id", id);
-    toast.success("Tournament deleted.");
+    toast.success("Deleted.");
     fetchData();
   };
 
@@ -109,9 +116,7 @@ const TournamentPanel = () => {
     });
   };
 
-  const filteredQuestions = categoryFilter
-    ? questions.filter(q => q.category === categoryFilter)
-    : questions;
+  const filteredQuestions = categoryFilter ? questions.filter(q => q.category === categoryFilter) : questions;
 
   const statusColor: Record<string, string> = {
     upcoming: "bg-blue-500/20 text-blue-400 border-blue-500/30",
@@ -119,20 +124,32 @@ const TournamentPanel = () => {
     completed: "bg-muted text-muted-foreground border-border",
   };
 
+  const typeLabel: Record<string, string> = { tournament: "Tournament", olympiad: "Olympiad", jee: "JEE Mock" };
+
   return (
     <div className="space-y-6">
-      {/* Create Tournament */}
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="font-display text-lg flex items-center gap-2">
-            <Plus className="h-5 w-5 text-gold" /> Create Tournament
+            <Plus className="h-5 w-5 text-gold" /> Create Competition
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
             <div className="space-y-2">
               <Label>Title</Label>
-              <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="Tournament Title" className="bg-secondary border-border" />
+              <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="Competition Title" className="bg-secondary border-border" />
+            </div>
+            <div className="space-y-2">
+              <Label>Type</Label>
+              <Select value={tournamentType} onValueChange={setTournamentType}>
+                <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="tournament">Tournament (Continuous)</SelectItem>
+                  <SelectItem value="olympiad">Olympiad (Scheduled)</SelectItem>
+                  <SelectItem value="jee">JEE Mock (Scheduled)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label>Time Limit (minutes)</Label>
@@ -144,7 +161,7 @@ const TournamentPanel = () => {
             <Input value={description} onChange={e => setDescription(e.target.value)} placeholder="Optional description" className="bg-secondary border-border" />
           </div>
           <div className="space-y-2">
-            <Label>Telegram Link (optional — shown publicly with tournament)</Label>
+            <Label>Telegram Link (optional — shown publicly)</Label>
             <Input value={telegramLink} onChange={e => setTelegramLink(e.target.value)} placeholder="https://t.me/YourChannel" className="bg-secondary border-border" />
           </div>
           <div className="grid gap-4 md:grid-cols-2">
@@ -158,18 +175,12 @@ const TournamentPanel = () => {
             </div>
           </div>
 
-          {/* Question Selector */}
           <div className="space-y-2">
             <Label>Select Questions ({selectedQuestions.size} selected)</Label>
             <div className="flex gap-2 mb-2 flex-wrap">
               {["", "number_theory", "algebra", "combinatorics", "geometry"].map(c => (
-                <Button
-                  key={c}
-                  variant={categoryFilter === c ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setCategoryFilter(c)}
-                  className={categoryFilter === c ? "bg-gold text-gold-foreground" : ""}
-                >
+                <Button key={c} variant={categoryFilter === c ? "default" : "outline"} size="sm" onClick={() => setCategoryFilter(c)}
+                  className={categoryFilter === c ? "bg-gold text-gold-foreground" : ""}>
                   {c ? c.replace("_", " ").replace(/\b\w/g, l => l.toUpperCase()) : "All"}
                 </Button>
               ))}
@@ -177,10 +188,7 @@ const TournamentPanel = () => {
             <div className="max-h-48 overflow-y-auto space-y-1 rounded-lg border border-border p-2 bg-secondary/30">
               {filteredQuestions.map(q => (
                 <label key={q.id} className="flex items-center gap-2 p-2 rounded hover:bg-secondary/50 cursor-pointer">
-                  <Checkbox
-                    checked={selectedQuestions.has(q.id)}
-                    onCheckedChange={() => toggleQuestion(q.id)}
-                  />
+                  <Checkbox checked={selectedQuestions.has(q.id)} onCheckedChange={() => toggleQuestion(q.id)} />
                   <span className="text-sm text-foreground truncate">
                     {q.category} — Difficulty {q.difficulty_weight}/10 — {q.answer_type}
                   </span>
@@ -193,15 +201,14 @@ const TournamentPanel = () => {
           </div>
 
           <Button onClick={handleCreate} disabled={creating} className="w-full bg-gold text-gold-foreground hover:bg-gold/90">
-            {creating ? "Creating..." : "Create Tournament"}
+            {creating ? "Creating..." : "Create Competition"}
           </Button>
         </CardContent>
       </Card>
 
-      {/* Existing Tournaments */}
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="font-display text-lg">Existing Tournaments</CardTitle>
+          <CardTitle className="font-display text-lg">All Competitions</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -209,11 +216,15 @@ const TournamentPanel = () => {
               <div key={t.id} className="p-4 rounded-lg bg-secondary/30 border border-border space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-medium text-foreground">{t.title}</p>
                       <Badge className={statusColor[t.status] || ""}>{t.status}</Badge>
+                      <Badge variant="outline">{typeLabel[t.tournament_type] || "Tournament"}</Badge>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">{t.time_limit_minutes} min • {t.description || "No description"}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {t.time_limit_minutes} min • {t.description || "No description"} •
+                      <Users className="inline h-3 w-3 mx-1" />{participantCounts[t.id] || 0} participants
+                    </p>
                     {t.telegram_link && (
                       <a href={t.telegram_link} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:underline flex items-center gap-1 mt-1">
                         <ExternalLink className="h-3 w-3" /> {t.telegram_link}
@@ -241,7 +252,7 @@ const TournamentPanel = () => {
               </div>
             ))}
             {tournaments.length === 0 && (
-              <p className="text-center text-muted-foreground py-4">No tournaments yet.</p>
+              <p className="text-center text-muted-foreground py-4">No competitions yet.</p>
             )}
           </div>
         </CardContent>

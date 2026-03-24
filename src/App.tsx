@@ -10,6 +10,9 @@ import Login from "./pages/Login";
 import Leaderboard from "./pages/Leaderboard";
 import Profile from "./pages/Profile";
 import Tournament from "./pages/Tournament";
+import Results from "./pages/Results";
+import PastTournaments from "./pages/PastTournaments";
+import Discussions from "./pages/Discussions";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 
@@ -41,6 +44,9 @@ const ProtectedLayout = () => {
         <Route path="/leaderboard" element={<Leaderboard />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/tournament/:id" element={<Tournament />} />
+        <Route path="/results/:id" element={<Results />} />
+        <Route path="/past" element={<PastTournaments />} />
+        <Route path="/discussions" element={<Discussions />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
