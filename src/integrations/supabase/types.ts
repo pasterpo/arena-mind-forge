@@ -14,16 +14,326 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      elo_history: {
+        Row: {
+          created_at: string
+          elo_after: number
+          elo_before: number
+          id: string
+          tournament_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          elo_after: number
+          elo_before: number
+          id?: string
+          tournament_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          elo_after?: number
+          elo_before?: number
+          id?: string
+          tournament_id?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "elo_history_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      penalty_logs: {
+        Row: {
+          created_at: string
+          id: string
+          penalty_type: Database["public"]["Enums"]["penalty_type"]
+          tournament_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          penalty_type: Database["public"]["Enums"]["penalty_type"]
+          tournament_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          penalty_type?: Database["public"]["Enums"]["penalty_type"]
+          tournament_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "penalty_logs_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          account_status: Database["public"]["Enums"]["account_status"]
+          created_at: string
+          elo_rating: number
+          email: string | null
+          global_rank: number | null
+          id: string
+          penalty_strikes: number
+          updated_at: string
+          username: string | null
+        }
+        Insert: {
+          account_status?: Database["public"]["Enums"]["account_status"]
+          created_at?: string
+          elo_rating?: number
+          email?: string | null
+          global_rank?: number | null
+          id: string
+          penalty_strikes?: number
+          updated_at?: string
+          username?: string | null
+        }
+        Update: {
+          account_status?: Database["public"]["Enums"]["account_status"]
+          created_at?: string
+          elo_rating?: number
+          email?: string | null
+          global_rank?: number | null
+          id?: string
+          penalty_strikes?: number
+          updated_at?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
+      question_bank: {
+        Row: {
+          answer_type: Database["public"]["Enums"]["answer_type"]
+          category: Database["public"]["Enums"]["question_category"]
+          correct_answer: string
+          created_at: string
+          created_by: string | null
+          difficulty_weight: number
+          id: string
+          multiple_choice_options: Json | null
+          problem_image_url: string | null
+          updated_at: string
+          visibility: Database["public"]["Enums"]["question_visibility"]
+        }
+        Insert: {
+          answer_type?: Database["public"]["Enums"]["answer_type"]
+          category?: Database["public"]["Enums"]["question_category"]
+          correct_answer: string
+          created_at?: string
+          created_by?: string | null
+          difficulty_weight?: number
+          id?: string
+          multiple_choice_options?: Json | null
+          problem_image_url?: string | null
+          updated_at?: string
+          visibility?: Database["public"]["Enums"]["question_visibility"]
+        }
+        Update: {
+          answer_type?: Database["public"]["Enums"]["answer_type"]
+          category?: Database["public"]["Enums"]["question_category"]
+          correct_answer?: string
+          created_at?: string
+          created_by?: string | null
+          difficulty_weight?: number
+          id?: string
+          multiple_choice_options?: Json | null
+          problem_image_url?: string | null
+          updated_at?: string
+          visibility?: Database["public"]["Enums"]["question_visibility"]
+        }
+        Relationships: []
+      }
+      submissions: {
+        Row: {
+          created_at: string
+          id: string
+          is_correct: boolean | null
+          question_id: string
+          submitted_answer: string | null
+          time_taken_seconds: number | null
+          tournament_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_correct?: boolean | null
+          question_id: string
+          submitted_answer?: string | null
+          time_taken_seconds?: number | null
+          tournament_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_correct?: boolean | null
+          question_id?: string
+          submitted_answer?: string | null
+          time_taken_seconds?: number | null
+          tournament_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "submissions_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "question_bank"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "submissions_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tournament_questions: {
+        Row: {
+          id: string
+          question_id: string
+          question_order: number
+          tournament_id: string
+        }
+        Insert: {
+          id?: string
+          question_id: string
+          question_order?: number
+          tournament_id: string
+        }
+        Update: {
+          id?: string
+          question_id?: string
+          question_order?: number
+          tournament_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tournament_questions_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "question_bank"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tournament_questions_tournament_id_fkey"
+            columns: ["tournament_id"]
+            isOneToOne: false
+            referencedRelation: "tournaments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tournaments: {
+        Row: {
+          allowed_roles: string[] | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          end_timestamp: string
+          id: string
+          start_timestamp: string
+          status: Database["public"]["Enums"]["tournament_status"]
+          time_limit_minutes: number
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          allowed_roles?: string[] | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          end_timestamp: string
+          id?: string
+          start_timestamp: string
+          status?: Database["public"]["Enums"]["tournament_status"]
+          time_limit_minutes?: number
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          allowed_roles?: string[] | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          end_timestamp?: string
+          id?: string
+          start_timestamp?: string
+          status?: Database["public"]["Enums"]["tournament_status"]
+          time_limit_minutes?: number
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      calculate_elo_changes: {
+        Args: { p_tournament_id: string }
+        Returns: undefined
+      }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_admin_or_moderator: { Args: { _user_id: string }; Returns: boolean }
+      update_global_ranks: { Args: never; Returns: undefined }
     }
     Enums: {
-      [_ in never]: never
+      account_status: "active" | "suspended"
+      answer_type: "text" | "multiple_choice"
+      app_role: "admin" | "moderator" | "competitor"
+      penalty_type: "fullscreen_exit" | "tab_switch" | "devtools"
+      question_category:
+        | "number_theory"
+        | "algebra"
+        | "combinatorics"
+        | "geometry"
+      question_visibility: "draft" | "published"
+      tournament_status: "upcoming" | "active" | "completed"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +460,19 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      account_status: ["active", "suspended"],
+      answer_type: ["text", "multiple_choice"],
+      app_role: ["admin", "moderator", "competitor"],
+      penalty_type: ["fullscreen_exit", "tab_switch", "devtools"],
+      question_category: [
+        "number_theory",
+        "algebra",
+        "combinatorics",
+        "geometry",
+      ],
+      question_visibility: ["draft", "published"],
+      tournament_status: ["upcoming", "active", "completed"],
+    },
   },
 } as const
