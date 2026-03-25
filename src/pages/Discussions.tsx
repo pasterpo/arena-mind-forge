@@ -7,17 +7,18 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { MessageSquare, Plus, Pin, Lock, Send, ChevronDown, ChevronUp } from "lucide-react";
+import { MessageSquare, Plus, Pin, Lock, Send, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { useAuth as useAuthHook } from "@/hooks/useAuth";
 
 const Discussions = () => {
-  const { user } = useAuth();
+  const { user, isAdminOrMod } = useAuth();
   const [discussions, setDiscussions] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<Record<string, string>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
   const [replies, setReplies] = useState<Record<string, any[]>>({});
-  const [replyText, setReplyText] = useState("");
+  const [replyTexts, setReplyTexts] = useState<Record<string, string>>({});
   const [newTitle, setNewTitle] = useState("");
   const [newBody, setNewBody] = useState("");
   const [creating, setCreating] = useState(false);
@@ -48,9 +49,12 @@ const Discussions = () => {
     const channel = supabase
       .channel("discussions-public")
       .on("postgres_changes", { event: "*", schema: "public", table: "discussions" }, () => fetchDiscussions())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "discussion_replies" }, () => {
+        if (expanded) fetchReplies(expanded);
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [expanded]);
 
   const fetchReplies = async (discussionId: string) => {
     const { data } = await supabase
@@ -88,17 +92,41 @@ const Discussions = () => {
   };
 
   const postReply = async (discussionId: string) => {
-    if (!replyText.trim() || !user) return;
+    const text = replyTexts[discussionId] || "";
+    if (!text.trim() || !user) return;
     const { error } = await supabase.from("discussion_replies").insert({
       discussion_id: discussionId,
-      body: replyText.trim(),
+      body: text.trim(),
       user_id: user.id,
     });
     if (error) toast.error(error.message);
     else {
-      setReplyText("");
+      setReplyTexts(prev => ({ ...prev, [discussionId]: "" }));
       fetchReplies(discussionId);
+      // Update discussion's updated_at
+      await supabase.from("discussions").update({ updated_at: new Date().toISOString() }).eq("id", discussionId);
     }
+  };
+
+  const deleteDiscussion = async (id: string) => {
+    if (!window.confirm("Delete this discussion and all its replies?")) return;
+    await supabase.from("discussion_replies").delete().eq("discussion_id", id);
+    await supabase.from("discussions").delete().eq("id", id);
+    toast.success("Discussion deleted.");
+    if (expanded === id) setExpanded(null);
+    fetchDiscussions();
+  };
+
+  const togglePin = async (id: string, current: boolean) => {
+    await supabase.from("discussions").update({ pinned: !current }).eq("id", id);
+    toast.success(current ? "Unpinned." : "Pinned.");
+    fetchDiscussions();
+  };
+
+  const toggleLock = async (id: string, current: boolean) => {
+    await supabase.from("discussions").update({ locked: !current }).eq("id", id);
+    toast.success(current ? "Unlocked." : "Locked.");
+    fetchDiscussions();
   };
 
   return (
@@ -107,6 +135,7 @@ const Discussions = () => {
         <div className="flex items-center gap-3">
           <MessageSquare className="h-6 w-6 text-gold" />
           <h1 className="font-display text-3xl font-bold text-foreground">Discussions</h1>
+          <Badge variant="outline" className="border-border">{discussions.length} threads</Badge>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
@@ -131,7 +160,7 @@ const Discussions = () => {
                 onChange={e => setNewBody(e.target.value)}
                 className="bg-secondary border-border min-h-[120px]"
               />
-              <Button onClick={createDiscussion} disabled={creating} className="w-full bg-gold text-gold-foreground hover:bg-gold/90">
+              <Button onClick={createDiscussion} disabled={creating || !newTitle.trim() || !newBody.trim()} className="w-full bg-gold text-gold-foreground hover:bg-gold/90">
                 {creating ? "Posting..." : "Post Discussion"}
               </Button>
             </div>
@@ -140,58 +169,80 @@ const Discussions = () => {
       </div>
 
       <div className="space-y-3">
-        {discussions.map(d => (
-          <Card key={d.id} className="bg-card border-border">
-            <CardHeader className="pb-2 cursor-pointer" onClick={() => !d.locked && toggleExpand(d.id)}>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0">
-                  {d.pinned && <Pin className="h-4 w-4 text-gold shrink-0" />}
-                  {d.locked && <Lock className="h-4 w-4 text-muted-foreground shrink-0" />}
-                  <CardTitle className="font-display text-base truncate">{d.title}</CardTitle>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-xs text-muted-foreground">
-                    {profiles[d.user_id] || "Anonymous"} • {formatDistanceToNow(new Date(d.created_at), { addSuffix: true })}
-                  </span>
-                  {expanded === d.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </div>
-              </div>
-            </CardHeader>
-
-            {expanded === d.id && (
-              <CardContent className="space-y-4">
-                <p className="text-sm text-foreground whitespace-pre-wrap">{d.body}</p>
-
-                {/* Replies */}
-                <div className="space-y-2 pl-4 border-l-2 border-border">
-                  {(replies[d.id] || []).map((r: any) => (
-                    <div key={r.id} className="p-3 rounded bg-secondary/30">
-                      <p className="text-xs text-muted-foreground mb-1">
-                        {profiles[r.user_id] || "Anonymous"} • {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
-                      </p>
-                      <p className="text-sm text-foreground">{r.body}</p>
-                    </div>
-                  ))}
-                </div>
-
-                {!d.locked && (
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Write a reply..."
-                      value={replyText}
-                      onChange={e => setReplyText(e.target.value)}
-                      onKeyDown={e => e.key === "Enter" && postReply(d.id)}
-                      className="bg-secondary border-border"
-                    />
-                    <Button onClick={() => postReply(d.id)} size="icon" className="bg-gold text-gold-foreground hover:bg-gold/90 shrink-0">
-                      <Send className="h-4 w-4" />
-                    </Button>
+        {discussions.map(d => {
+          const replyCount = replies[d.id]?.length;
+          return (
+            <Card key={d.id} className={`bg-card border-border ${expanded === d.id ? "border-gold/20" : ""}`}>
+              <CardHeader className="pb-2 cursor-pointer" onClick={() => toggleExpand(d.id)}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {d.pinned && <Pin className="h-4 w-4 text-gold shrink-0" />}
+                    {d.locked && <Lock className="h-4 w-4 text-muted-foreground shrink-0" />}
+                    <CardTitle className="font-display text-base truncate">{d.title}</CardTitle>
                   </div>
-                )}
-              </CardContent>
-            )}
-          </Card>
-        ))}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs text-muted-foreground">
+                      {profiles[d.user_id] || "Anonymous"} • {formatDistanceToNow(new Date(d.created_at), { addSuffix: true })}
+                    </span>
+                    {isAdminOrMod && (
+                      <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => togglePin(d.id, d.pinned)}>
+                          <Pin className={`h-3 w-3 ${d.pinned ? "text-gold" : "text-muted-foreground"}`} />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => toggleLock(d.id, d.locked)}>
+                          <Lock className={`h-3 w-3 ${d.locked ? "text-destructive" : "text-muted-foreground"}`} />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => deleteDiscussion(d.id)}>
+                          <Trash2 className="h-3 w-3 text-destructive" />
+                        </Button>
+                      </div>
+                    )}
+                    {expanded === d.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  </div>
+                </div>
+              </CardHeader>
+
+              {expanded === d.id && (
+                <CardContent className="space-y-4">
+                  <p className="text-sm text-foreground whitespace-pre-wrap">{d.body}</p>
+
+                  {/* Replies */}
+                  <div className="space-y-2 pl-4 border-l-2 border-border">
+                    {(replies[d.id] || []).map((r: any) => (
+                      <div key={r.id} className="p-3 rounded bg-secondary/30">
+                        <p className="text-xs text-muted-foreground mb-1">
+                          {profiles[r.user_id] || "Anonymous"} • {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
+                        </p>
+                        <p className="text-sm text-foreground">{r.body}</p>
+                      </div>
+                    ))}
+                    {(replies[d.id] || []).length === 0 && (
+                      <p className="text-xs text-muted-foreground py-2">No replies yet. Be the first!</p>
+                    )}
+                  </div>
+
+                  {!d.locked && (
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Write a reply..."
+                        value={replyTexts[d.id] || ""}
+                        onChange={e => setReplyTexts(prev => ({ ...prev, [d.id]: e.target.value }))}
+                        onKeyDown={e => e.key === "Enter" && postReply(d.id)}
+                        className="bg-secondary border-border"
+                      />
+                      <Button onClick={() => postReply(d.id)} size="icon" className="bg-gold text-gold-foreground hover:bg-gold/90 shrink-0">
+                        <Send className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                  {d.locked && (
+                    <p className="text-center text-xs text-muted-foreground py-2">🔒 This discussion is locked.</p>
+                  )}
+                </CardContent>
+              )}
+            </Card>
+          );
+        })}
 
         {discussions.length === 0 && (
           <Card className="bg-card border-border">

@@ -2,22 +2,27 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { TierBadge } from "@/components/TierBadge";
-import { Search, Trophy } from "lucide-react";
+import { Search, Trophy, Users } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
 
 const Leaderboard = () => {
+  const { user } = useAuth();
   const [profiles, setProfiles] = useState<any[]>([]);
   const [search, setSearch] = useState("");
+  const [totalUsers, setTotalUsers] = useState(0);
 
   useEffect(() => {
     const fetch = async () => {
-      const { data } = await supabase
+      const { data, count } = await supabase
         .from("profiles")
-        .select("*")
+        .select("*", { count: "exact" })
         .eq("account_status", "active")
         .order("elo_rating", { ascending: false })
-        .limit(100);
+        .limit(200);
       if (data) setProfiles(data);
+      if (count) setTotalUsers(count);
     };
     fetch();
 
@@ -40,6 +45,9 @@ const Leaderboard = () => {
       <div className="flex items-center gap-3">
         <Trophy className="h-6 w-6 text-gold" />
         <h1 className="font-display text-3xl font-bold text-foreground">Global Leaderboard</h1>
+        <Badge variant="outline" className="flex items-center gap-1">
+          <Users className="h-3 w-3" /> {totalUsers} competitors
+        </Badge>
       </div>
 
       <div className="relative max-w-sm">
@@ -63,18 +71,24 @@ const Leaderboard = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.map((p, i) => (
-              <TableRow key={p.id} className="border-border">
-                <TableCell>
-                  <span className={`font-mono font-bold ${i < 3 ? "text-gold" : "text-muted-foreground"}`}>
-                    #{p.global_rank || i + 1}
-                  </span>
-                </TableCell>
-                <TableCell className="font-medium text-foreground">{p.username || "Anonymous"}</TableCell>
-                <TableCell><TierBadge elo={p.elo_rating} /></TableCell>
-                <TableCell className="text-right font-mono font-bold text-foreground">{p.elo_rating}</TableCell>
-              </TableRow>
-            ))}
+            {filtered.map((p, i) => {
+              const isMe = p.id === user?.id;
+              return (
+                <TableRow key={p.id} className={`border-border ${isMe ? "bg-gold/5" : ""}`}>
+                  <TableCell>
+                    <span className={`font-mono font-bold ${i < 3 ? "text-gold" : "text-muted-foreground"}`}>
+                      #{p.global_rank || i + 1}
+                    </span>
+                  </TableCell>
+                  <TableCell className="font-medium text-foreground">
+                    {p.username || "Anonymous"}
+                    {isMe && <Badge variant="outline" className="ml-2 text-xs">You</Badge>}
+                  </TableCell>
+                  <TableCell><TierBadge elo={p.elo_rating} /></TableCell>
+                  <TableCell className="text-right font-mono font-bold text-foreground">{p.elo_rating}</TableCell>
+                </TableRow>
+              );
+            })}
             {filtered.length === 0 && (
               <TableRow>
                 <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
