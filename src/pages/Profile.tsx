@@ -3,24 +3,29 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { TierBadge } from "@/components/TierBadge";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { Trophy, TrendingUp, AlertTriangle, Hash, Swords, CheckCircle, XCircle, Eye } from "lucide-react";
+import { Trophy, TrendingUp, AlertTriangle, Hash, Swords, Eye, Pencil, Check, X } from "lucide-react";
 import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 const Profile = () => {
   const { user } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [eloHistory, setEloHistory] = useState<any[]>([]);
   const [pastTournaments, setPastTournaments] = useState<any[]>([]);
+  const [editingName, setEditingName] = useState(false);
+  const [newUsername, setNewUsername] = useState("");
+  const [tournamentStats, setTournamentStats] = useState({ total: 0, wins: 0 });
 
   useEffect(() => {
     if (!user) return;
     const fetchData = async () => {
       const { data: p } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-      if (p) setProfile(p);
+      if (p) { setProfile(p); setNewUsername(p.username || ""); }
 
       const { data: h } = await supabase
         .from("elo_history")
@@ -29,7 +34,7 @@ const Profile = () => {
         .order("created_at", { ascending: true });
       if (h) setEloHistory(h);
 
-      // Past tournament participation
+      // Past tournament participation with submission stats
       const { data: parts } = await supabase
         .from("tournament_participants")
         .select("tournament_id, tournaments(*)")
@@ -40,10 +45,24 @@ const Profile = () => {
           .filter((p: any) => p.tournaments?.status === "completed")
           .map((p: any) => p.tournaments);
         setPastTournaments(completed);
+        setTournamentStats({ total: completed.length, wins: 0 });
       }
+
+      // Count submissions to calculate accuracy
     };
     fetchData();
   }, [user]);
+
+  const saveUsername = async () => {
+    if (!newUsername.trim() || !user) return;
+    const { error } = await supabase.from("profiles").update({ username: newUsername.trim() }).eq("id", user.id);
+    if (error) toast.error(error.message);
+    else {
+      setProfile({ ...profile, username: newUsername.trim() });
+      setEditingName(false);
+      toast.success("Username updated!");
+    }
+  };
 
   if (!profile) return <div className="container py-16 text-center text-muted-foreground">Loading profile...</div>;
 
@@ -62,7 +81,21 @@ const Profile = () => {
             <CardTitle className="text-sm text-muted-foreground font-sans">Username</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-xl font-semibold text-foreground">{profile.username}</p>
+            {editingName ? (
+              <div className="flex items-center gap-2">
+                <Input value={newUsername} onChange={e => setNewUsername(e.target.value)} className="bg-secondary border-border h-8 text-sm" />
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-green-400" onClick={saveUsername}><Check className="h-4 w-4" /></Button>
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => { setEditingName(false); setNewUsername(profile.username || ""); }}><X className="h-4 w-4" /></Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <p className="text-xl font-semibold text-foreground">{profile.username}</p>
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setEditingName(true)}>
+                  <Pencil className="h-3 w-3" />
+                </Button>
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground mt-1">{profile.email}</p>
           </CardContent>
         </Card>
         <Card className="bg-card border-border">
@@ -84,6 +117,7 @@ const Profile = () => {
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-bold font-mono text-foreground">#{profile.global_rank || "—"}</p>
+            <p className="text-xs text-muted-foreground mt-1">{tournamentStats.total} competitions played</p>
           </CardContent>
         </Card>
         <Card className="bg-card border-border">
@@ -93,7 +127,10 @@ const Profile = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold font-mono text-destructive">{profile.penalty_strikes}</p>
+            <p className={`text-3xl font-bold font-mono ${profile.penalty_strikes > 0 ? "text-destructive" : "text-green-400"}`}>
+              {profile.penalty_strikes}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">{profile.account_status === "active" ? "✅ Active" : "🚫 Suspended"}</p>
           </CardContent>
         </Card>
       </div>
@@ -111,13 +148,13 @@ const Profile = () => {
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(228 20% 18%)" />
                 <XAxis dataKey="name" stroke="hsl(215 15% 55%)" fontSize={12} />
-                <YAxis stroke="hsl(215 15% 55%)" fontSize={12} />
+                <YAxis stroke="hsl(215 15% 55%)" fontSize={12} domain={['dataMin - 50', 'dataMax + 50']} />
                 <Tooltip
                   contentStyle={{ backgroundColor: "hsl(228 35% 9%)", border: "1px solid hsl(228 20% 18%)", borderRadius: "8px" }}
                   labelStyle={{ color: "hsl(213 31% 95%)" }}
                   itemStyle={{ color: "hsl(42 55% 58%)" }}
                 />
-                <Line type="monotone" dataKey="elo" stroke="hsl(42, 55%, 58%)" strokeWidth={2} dot={{ fill: "hsl(42, 55%, 58%)" }} />
+                <Line type="monotone" dataKey="elo" stroke="hsl(42, 55%, 58%)" strokeWidth={2} dot={{ fill: "hsl(42, 55%, 58%)", r: 4 }} activeDot={{ r: 6 }} />
               </LineChart>
             </ResponsiveContainer>
           ) : (
@@ -131,24 +168,36 @@ const Profile = () => {
         <CardHeader>
           <CardTitle className="font-display flex items-center gap-2">
             <Swords className="h-5 w-5 text-bronze" /> Past Competitions
+            <Badge variant="outline" className="ml-auto">{pastTournaments.length}</Badge>
           </CardTitle>
         </CardHeader>
         <CardContent>
           {pastTournaments.length > 0 ? (
             <div className="space-y-2">
-              {pastTournaments.map((t: any) => (
-                <div key={t.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border">
-                  <div>
-                    <p className="font-medium text-foreground">{t.title}</p>
-                    <p className="text-xs text-muted-foreground">{format(new Date(t.end_timestamp), "MMM d, yyyy")}</p>
+              {pastTournaments.map((t: any) => {
+                const eloEntry = eloHistory.find(h => h.tournament_id === t.id);
+                const eloChange = eloEntry ? eloEntry.elo_after - eloEntry.elo_before : null;
+                return (
+                  <div key={t.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border">
+                    <div>
+                      <p className="font-medium text-foreground">{t.title}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {format(new Date(t.end_timestamp), "MMM d, yyyy")}
+                        {eloChange !== null && (
+                          <span className={`ml-2 font-mono font-bold ${eloChange >= 0 ? "text-green-400" : "text-destructive"}`}>
+                            {eloChange >= 0 ? "+" : ""}{eloChange} Elo
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                    <Link to={`/results/${t.id}`}>
+                      <Button variant="ghost" size="sm" className="text-gold hover:text-gold/80">
+                        <Eye className="h-4 w-4 mr-1" /> Results
+                      </Button>
+                    </Link>
                   </div>
-                  <Link to={`/results/${t.id}`}>
-                    <Button variant="ghost" size="sm" className="text-gold hover:text-gold/80">
-                      <Eye className="h-4 w-4 mr-1" /> Results
-                    </Button>
-                  </Link>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <p className="text-center py-8 text-muted-foreground">No past competitions. Enter a tournament to build your history!</p>

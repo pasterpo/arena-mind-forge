@@ -5,6 +5,23 @@ import { differenceInSeconds } from "date-fns";
 import { toast } from "sonner";
 import type { User } from "@supabase/supabase-js";
 
+// Seeded shuffle so question order is consistent per user per tournament
+const seededShuffle = <T,>(arr: T[], seed: string): T[] => {
+  const result = [...arr];
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = ((hash << 5) - hash) + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  for (let i = result.length - 1; i > 0; i--) {
+    hash = ((hash << 5) - hash) + i;
+    hash |= 0;
+    const j = Math.abs(hash) % (i + 1);
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+};
+
 export const useTournament = (id: string | undefined, user: User | null) => {
   const navigate = useNavigate();
   const [tournament, setTournament] = useState<any>(null);
@@ -24,6 +41,14 @@ export const useTournament = (id: string | undefined, user: User | null) => {
   const [tournamentState, setTournamentState] = useState<"loading" | "not_found" | "not_started" | "not_registered" | "ended" | "ready" | "in_progress" | "locked_out">("loading");
   const startTimeRef = useRef<Date>(new Date());
   const autoSubmittedRef = useRef(false);
+  const questionsRef = useRef<any[]>([]);
+  const submittedRef = useRef<Set<string>>(new Set());
+  const answersRef = useRef<Record<string, string>>({});
+
+  // Keep refs in sync
+  useEffect(() => { questionsRef.current = questions; }, [questions]);
+  useEffect(() => { submittedRef.current = submitted; }, [submitted]);
+  useEffect(() => { answersRef.current = answers; }, [answers]);
 
   // Fetch tournament data
   useEffect(() => {
@@ -31,7 +56,6 @@ export const useTournament = (id: string | undefined, user: User | null) => {
     const fetchData = async () => {
       setLoading(true);
 
-      // Get tournament
       const { data: t } = await supabase.from("tournaments").select("*").eq("id", id).single();
       if (!t) {
         setTournamentState("not_found");
@@ -40,7 +64,6 @@ export const useTournament = (id: string | undefined, user: User | null) => {
       }
       setTournament(t);
 
-      // Check tournament time
       const nowTime = new Date();
       const start = new Date(t.start_timestamp);
       const end = new Date(t.end_timestamp);
@@ -56,14 +79,15 @@ export const useTournament = (id: string | undefined, user: User | null) => {
         return;
       }
 
-      // Get questions
+      // Get questions with seeded shuffle
       const { data: tq } = await supabase
         .from("tournament_questions")
         .select("*, question_bank(*)")
         .eq("tournament_id", id)
         .order("question_order");
       if (tq) {
-        const shuffled = [...tq].sort(() => Math.random() - 0.5);
+        const seed = user ? `${user.id}-${id}` : id;
+        const shuffled = seededShuffle(tq, seed);
         setQuestions(shuffled);
       }
 
@@ -84,7 +108,6 @@ export const useTournament = (id: string | undefined, user: User | null) => {
           .maybeSingle();
 
         if (!reg) {
-          // Auto-register on entry
           await supabase.from("tournament_participants").insert({
             tournament_id: id,
             user_id: user.id,
@@ -108,6 +131,21 @@ export const useTournament = (id: string | undefined, user: User | null) => {
           setAnswers(existingAnswers);
           setSubmitted(existingSubmitted);
         }
+
+        // Check existing penalty strikes for this tournament
+        const { count: penaltyCount } = await supabase
+          .from("penalty_logs")
+          .select("*", { count: "exact", head: true })
+          .eq("tournament_id", id)
+          .eq("user_id", user.id)
+          .eq("penalty_type", "fullscreen_exit");
+        if (penaltyCount && penaltyCount >= 2) {
+          setLockedOut(true);
+          setTournamentState("locked_out");
+          setLoading(false);
+          return;
+        }
+        setStrikes(penaltyCount || 0);
       }
 
       setTournamentState("ready");
@@ -122,14 +160,6 @@ export const useTournament = (id: string | undefined, user: User | null) => {
     return () => clearInterval(timer);
   }, []);
 
-  // Auto-submit at tournament end
-  useEffect(() => {
-    if (!tournament || !started || autoSubmittedRef.current) return;
-    if (differenceInSeconds(new Date(tournament.end_timestamp), now) <= 0) {
-      handleAutoSubmit();
-    }
-  }, [now, tournament, started]);
-
   const logPenalty = useCallback(async (type: string) => {
     if (!user || !id) return;
     await supabase.from("penalty_logs").insert({
@@ -137,6 +167,14 @@ export const useTournament = (id: string | undefined, user: User | null) => {
       tournament_id: id,
       penalty_type: type as any,
     });
+    // Increment penalty_strikes on profile for tab_switch
+    if (type === "tab_switch") {
+      await supabase.rpc("has_role", { _user_id: user.id, _role: "competitor" }); // just to check
+      const { data: profile } = await supabase.from("profiles").select("penalty_strikes").eq("id", user.id).single();
+      if (profile) {
+        await supabase.from("profiles").update({ penalty_strikes: profile.penalty_strikes + 1 }).eq("id", user.id);
+      }
+    }
   }, [user, id]);
 
   const submitAnswer = useCallback(async (questionId: string, answer: string) => {
@@ -163,18 +201,38 @@ export const useTournament = (id: string | undefined, user: User | null) => {
   const handleAutoSubmit = useCallback(async () => {
     if (!user || !id || autoSubmittedRef.current) return;
     autoSubmittedRef.current = true;
-    // Submit any unanswered questions that have answers typed
-    for (const q of questions) {
+    const qs = questionsRef.current;
+    const sub = submittedRef.current;
+    const ans = answersRef.current;
+    for (const q of qs) {
       const qId = q.question_bank.id;
-      if (!submitted.has(qId) && answers[qId]?.trim()) {
-        await submitAnswer(qId, answers[qId]);
+      if (!sub.has(qId) && ans[qId]?.trim()) {
+        const timeTaken = differenceInSeconds(new Date(), startTimeRef.current);
+        await supabase.from("submissions").upsert(
+          {
+            user_id: user.id,
+            tournament_id: id,
+            question_id: qId,
+            submitted_answer: ans[qId].trim(),
+            time_taken_seconds: timeTaken,
+          },
+          { onConflict: "user_id,tournament_id,question_id" }
+        );
       }
     }
     setLockedOut(true);
     setTournamentState("locked_out");
     toast.info("Tournament ended. All answers submitted.");
     setTimeout(() => navigate(`/results/${id}`), 3000);
-  }, [user, id, questions, submitted, answers, submitAnswer, navigate]);
+  }, [user, id, navigate]);
+
+  // Auto-submit at tournament end
+  useEffect(() => {
+    if (!tournament || !started || autoSubmittedRef.current) return;
+    if (differenceInSeconds(new Date(tournament.end_timestamp), now) <= 0) {
+      handleAutoSubmit();
+    }
+  }, [now, tournament, started, handleAutoSubmit]);
 
   const enterFullscreen = useCallback(async () => {
     try {
@@ -192,15 +250,14 @@ export const useTournament = (id: string | undefined, user: User | null) => {
     setIsFullscreen(false);
     const newStrikes = strikes + 1;
     setStrikes(newStrikes);
+    logPenalty("fullscreen_exit");
     if (newStrikes >= 2) {
       handleAutoSubmit();
       setLockedOut(true);
       setTournamentState("locked_out");
-      logPenalty("fullscreen_exit");
       toast.error("Locked out for exiting fullscreen twice.");
     } else {
       setShowWarning(true);
-      logPenalty("fullscreen_exit");
     }
   }, [strikes, handleAutoSubmit, logPenalty]);
 
