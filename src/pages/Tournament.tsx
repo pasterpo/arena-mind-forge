@@ -1,126 +1,54 @@
-import { useEffect, useState, useRef } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { useEffect } from "react";
+import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { useTournament } from "@/hooks/useTournament";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { toast } from "sonner";
-import { differenceInSeconds } from "date-fns";
-import { AlertTriangle, CheckCircle, ChevronLeft, ChevronRight, Clock, Shield, Users } from "lucide-react";
+import { AlertTriangle, CheckCircle, ChevronLeft, ChevronRight, Clock, Shield, Users, ArrowLeft } from "lucide-react";
+import { format } from "date-fns";
 
 const Tournament = () => {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const t = useTournament(id, user);
 
-  const [tournament, setTournament] = useState<any>(null);
-  const [questions, setQuestions] = useState<any[]>([]);
-  const [currentIdx, setCurrentIdx] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [submitted, setSubmitted] = useState<Set<string>>(new Set());
-  const [now, setNow] = useState(new Date());
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showWarning, setShowWarning] = useState(false);
-  const [strikes, setStrikes] = useState(0);
-  const [lockedOut, setLockedOut] = useState(false);
-  const [started, setStarted] = useState(false);
-  const [participantCount, setParticipantCount] = useState(0);
-  const startTimeRef = useRef<Date>(new Date());
-
+  // Anti-cheat: fullscreen exit detection
   useEffect(() => {
-    if (!id) return;
-    const fetchData = async () => {
-      const { data: t } = await supabase.from("tournaments").select("*").eq("id", id).single();
-      if (t) setTournament(t);
-
-      const { data: tq } = await supabase
-        .from("tournament_questions")
-        .select("*, question_bank(*)")
-        .eq("tournament_id", id)
-        .order("question_order");
-      if (tq) {
-        const shuffled = [...tq].sort(() => Math.random() - 0.5);
-        setQuestions(shuffled);
-      }
-
-      // Participant count
-      const { count } = await supabase.from("tournament_participants").select("*", { count: "exact", head: true }).eq("tournament_id", id);
-      setParticipantCount(count || 0);
-
-      // Auto-register participant
-      if (user) {
-        await supabase.from("tournament_participants").upsert({ tournament_id: id, user_id: user.id }, { onConflict: "tournament_id,user_id" });
-
-        const { data: subs } = await supabase
-          .from("submissions")
-          .select("question_id, submitted_answer")
-          .eq("tournament_id", id)
-          .eq("user_id", user.id);
-        if (subs) {
-          const existingAnswers: Record<string, string> = {};
-          const existingSubmitted = new Set<string>();
-          subs.forEach((s: any) => {
-            existingAnswers[s.question_id] = s.submitted_answer || "";
-            existingSubmitted.add(s.question_id);
-          });
-          setAnswers(existingAnswers);
-          setSubmitted(existingSubmitted);
-        }
-      }
-    };
-    fetchData();
-  }, [id, user]);
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  // Anti-cheat: fullscreen
-  useEffect(() => {
-    if (!started) return;
+    if (!t.started) return;
     const handler = () => {
-      if (!document.fullscreenElement) {
-        setIsFullscreen(false);
-        const newStrikes = strikes + 1;
-        setStrikes(newStrikes);
-        if (newStrikes >= 2) {
-          handleAutoSubmit();
-          setLockedOut(true);
-          logPenalty("fullscreen_exit");
-          toast.error("Locked out for exiting fullscreen twice.");
-        } else {
-          setShowWarning(true);
-          logPenalty("fullscreen_exit");
-        }
-      } else {
-        setIsFullscreen(true);
-      }
+      if (!document.fullscreenElement) t.handleStrike();
     };
     document.addEventListener("fullscreenchange", handler);
     return () => document.removeEventListener("fullscreenchange", handler);
-  }, [started, strikes]);
+  }, [t.started, t.handleStrike]);
 
-  // Anti-cheat: visibility
+  // Anti-cheat: tab switch
   useEffect(() => {
-    if (!started || !user || !id) return;
+    if (!t.started || !user || !id) return;
     const handler = () => {
-      if (document.hidden) logPenalty("tab_switch");
+      if (document.hidden) t.logPenalty("tab_switch");
     };
     document.addEventListener("visibilitychange", handler);
     return () => document.removeEventListener("visibilitychange", handler);
-  }, [started, user, id]);
+  }, [t.started, user, id, t.logPenalty]);
 
   // Anti-cheat: keyboard & context menu
   useEffect(() => {
-    if (!started) return;
+    if (!t.started) return;
     const block = (e: KeyboardEvent) => {
-      if (e.key === "F12" || (e.ctrlKey && e.shiftKey && e.key === "I") || (e.ctrlKey && e.key === "u") ||
-          (e.ctrlKey && e.key === "c") || (e.ctrlKey && e.key === "v") || (e.ctrlKey && e.key === "a")) {
+      if (
+        e.key === "F12" ||
+        (e.ctrlKey && e.shiftKey && e.key === "I") ||
+        (e.ctrlKey && e.key === "u") ||
+        (e.ctrlKey && e.key === "c") ||
+        (e.ctrlKey && e.key === "v") ||
+        (e.ctrlKey && e.key === "a")
+      ) {
         e.preventDefault();
       }
     };
@@ -134,61 +62,68 @@ const Tournament = () => {
       document.removeEventListener("contextmenu", blockCtx);
       document.removeEventListener("selectstart", blockSel);
     };
-  }, [started]);
+  }, [t.started]);
 
-  // Auto-submit at end
-  useEffect(() => {
-    if (!tournament || !started) return;
-    if (differenceInSeconds(new Date(tournament.end_timestamp), now) <= 0) handleAutoSubmit();
-  }, [now, tournament, started]);
+  // States: loading, not found, not started, ended, locked out
+  if (t.loading) {
+    return (
+      <div className="container py-16 text-center text-muted-foreground">
+        Loading tournament...
+      </div>
+    );
+  }
 
-  const logPenalty = async (type: string) => {
-    if (!user || !id) return;
-    await supabase.from("penalty_logs").insert({ user_id: user.id, tournament_id: id, penalty_type: type as any });
-    await supabase.rpc("update_global_ranks"); // also bump penalty count
-  };
+  if (t.tournamentState === "not_found") {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Card className="max-w-md bg-card border-border">
+          <CardContent className="pt-6 text-center space-y-4">
+            <AlertTriangle className="h-12 w-12 mx-auto text-destructive" />
+            <h2 className="font-display text-xl font-bold">Tournament Not Found</h2>
+            <p className="text-muted-foreground">This tournament doesn't exist or has been removed.</p>
+            <Link to="/"><Button variant="outline">Back to Arena</Button></Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
-  const handleAutoSubmit = async () => {
-    if (!user || !id) return;
-    for (const q of questions) {
-      const qId = q.question_bank.id;
-      if (!submitted.has(qId) && answers[qId]) await submitAnswer(qId, answers[qId]);
-    }
-    setLockedOut(true);
-    toast.info("Tournament ended. All answers submitted.");
-    setTimeout(() => navigate(`/results/${id}`), 3000);
-  };
+  if (t.tournamentState === "not_started") {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Card className="max-w-md bg-card border-border">
+          <CardContent className="pt-6 text-center space-y-4">
+            <Clock className="h-12 w-12 mx-auto text-gold" />
+            <h2 className="font-display text-xl font-bold">{t.tournament?.title}</h2>
+            <p className="text-muted-foreground">This tournament hasn't started yet.</p>
+            <p className="text-gold font-mono text-lg">
+              Starts: {t.tournament && format(new Date(t.tournament.start_timestamp), "MMM d, yyyy HH:mm")} UTC
+            </p>
+            <Link to="/"><Button variant="outline"><ArrowLeft className="h-4 w-4 mr-1" /> Back to Arena</Button></Link>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
-  const enterFullscreen = async () => {
-    try {
-      await document.documentElement.requestFullscreen();
-      setIsFullscreen(true);
-      setStarted(true);
-      startTimeRef.current = new Date();
-    } catch { toast.error("Fullscreen is required."); }
-  };
+  if (t.tournamentState === "ended") {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <Card className="max-w-md bg-card border-border">
+          <CardContent className="pt-6 text-center space-y-4">
+            <CheckCircle className="h-12 w-12 mx-auto text-green-400" />
+            <h2 className="font-display text-xl font-bold">{t.tournament?.title}</h2>
+            <p className="text-muted-foreground">This tournament has ended.</p>
+            <Button onClick={() => navigate(`/results/${id}`)} className="bg-gold text-gold-foreground hover:bg-gold/90">
+              View Results
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
-  const submitAnswer = async (questionId: string, answer: string) => {
-    if (!user || !id) return;
-    const timeTaken = differenceInSeconds(new Date(), startTimeRef.current);
-    const { error } = await supabase.from("submissions").upsert({
-      user_id: user.id, tournament_id: id, question_id: questionId,
-      submitted_answer: answer, time_taken_seconds: timeTaken,
-    }, { onConflict: "user_id,tournament_id,question_id" });
-    if (!error) {
-      setSubmitted(prev => new Set([...prev, questionId]));
-      toast.success("Answer Recorded.");
-    } else toast.error("Failed to submit.");
-  };
-
-  const timeRemaining = tournament ? Math.max(0, differenceInSeconds(new Date(tournament.end_timestamp), now)) : 0;
-  const hours = Math.floor(timeRemaining / 3600);
-  const minutes = Math.floor((timeRemaining % 3600) / 60);
-  const seconds = timeRemaining % 60;
-
-  if (!tournament) return <div className="container py-16 text-center text-muted-foreground">Loading tournament...</div>;
-
-  if (lockedOut) {
+  if (t.lockedOut || t.tournamentState === "locked_out") {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Card className="max-w-md bg-card border-destructive/50">
@@ -203,17 +138,18 @@ const Tournament = () => {
     );
   }
 
-  if (!started) {
+  // Pre-start screen
+  if (!t.started) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Card className="max-w-lg bg-card border-border">
           <CardHeader className="text-center">
-            <CardTitle className="font-display text-2xl">{tournament.title}</CardTitle>
-            <p className="text-sm text-muted-foreground mt-1">{tournament.description}</p>
+            <CardTitle className="font-display text-2xl">{t.tournament?.title}</CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">{t.tournament?.description}</p>
           </CardHeader>
           <CardContent className="space-y-6 text-center">
             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Users className="h-4 w-4" /> {participantCount} participants
+              <Users className="h-4 w-4" /> {t.participantCount} participants
             </div>
             <div className="space-y-2 text-sm text-muted-foreground">
               <div className="flex items-center justify-center gap-2">
@@ -225,102 +161,216 @@ const Tournament = () => {
               <p>• DevTools & copy/paste disabled</p>
               <p>• 2 fullscreen exits = automatic lockout</p>
             </div>
-            <div className="text-gold font-mono text-2xl font-bold">
-              {hours.toString().padStart(2, "0")}:{minutes.toString().padStart(2, "0")}:{seconds.toString().padStart(2, "0")} remaining
+            <div className="bg-secondary/30 p-4 rounded-lg border border-border space-y-1">
+              <p className="text-xs text-muted-foreground">Questions: {t.questions.length}</p>
+              <p className="text-xs text-muted-foreground">Time Limit: {t.tournament?.time_limit_minutes} minutes</p>
             </div>
-            <Button onClick={enterFullscreen} className="bg-gold text-gold-foreground hover:bg-gold/90" size="lg">
-              Enter Fullscreen & Begin
-            </Button>
+            <div className="text-gold font-mono text-2xl font-bold">
+              {t.hours.toString().padStart(2, "0")}:{t.minutes.toString().padStart(2, "0")}:{t.seconds.toString().padStart(2, "0")} remaining
+            </div>
+            {t.questions.length === 0 ? (
+              <div className="text-destructive text-sm">No questions assigned to this tournament yet.</div>
+            ) : (
+              <Button onClick={t.enterFullscreen} className="bg-gold text-gold-foreground hover:bg-gold/90" size="lg">
+                Enter Fullscreen & Begin
+              </Button>
+            )}
           </CardContent>
         </Card>
       </div>
     );
   }
 
-  const currentQuestion = questions[currentIdx]?.question_bank;
+  // In-tournament UI
+  const currentQuestion = t.questions[t.currentIdx]?.question_bank;
+  const progress = t.submitted.size;
+  const total = t.questions.length;
 
   return (
     <div className="min-h-screen bg-background no-select">
-      <Dialog open={showWarning} onOpenChange={setShowWarning}>
+      {/* Warning Dialog */}
+      <Dialog open={t.showWarning} onOpenChange={t.setShowWarning}>
         <DialogContent className="bg-card border-destructive/50">
           <DialogHeader>
             <DialogTitle className="text-destructive flex items-center gap-2">
               <AlertTriangle className="h-5 w-5" /> Warning: Fullscreen Exited
             </DialogTitle>
             <DialogDescription>
-              Strike {strikes}/2. One more = automatic lockout.
+              Strike {t.strikes}/2. One more = automatic lockout & submission.
             </DialogDescription>
           </DialogHeader>
-          <Button onClick={() => { setShowWarning(false); enterFullscreen(); }} className="bg-gold text-gold-foreground">
+          <Button
+            onClick={() => {
+              t.setShowWarning(false);
+              t.enterFullscreen();
+            }}
+            className="bg-gold text-gold-foreground"
+          >
             Return to Fullscreen
           </Button>
         </DialogContent>
       </Dialog>
 
+      {/* Top Bar */}
       <div className="sticky top-0 z-50 bg-card border-b border-border px-4 py-3 flex items-center justify-between">
-        <span className="text-sm text-muted-foreground font-display">{tournament.title}</span>
-        <div className="flex items-center gap-2">
-          <Clock className="h-4 w-4 text-gold" />
-          <span className="font-mono text-lg font-bold text-gold">
-            {hours.toString().padStart(2, "0")}:{minutes.toString().padStart(2, "0")}:{seconds.toString().padStart(2, "0")}
-          </span>
+        <span className="text-sm text-muted-foreground font-display">{t.tournament?.title}</span>
+        <div className="flex items-center gap-4">
+          <div className="text-xs text-muted-foreground">
+            {progress}/{total} answered
+          </div>
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-gold" />
+            <span className={`font-mono text-lg font-bold ${t.timeRemaining < 300 ? "text-destructive animate-pulse" : "text-gold"}`}>
+              {t.hours.toString().padStart(2, "0")}:{t.minutes.toString().padStart(2, "0")}:{t.seconds.toString().padStart(2, "0")}
+            </span>
+          </div>
         </div>
-        <span className="text-sm text-muted-foreground">{currentIdx + 1} / {questions.length}</span>
+        <span className="text-sm text-muted-foreground">{t.currentIdx + 1} / {total}</span>
       </div>
 
+      {/* Question Area */}
       <div className="container max-w-3xl py-8">
-        {currentQuestion && (
+        {currentQuestion ? (
           <Card className="bg-card border-border">
             <CardHeader>
-              <CardTitle className="font-display text-lg">Question {currentIdx + 1}</CardTitle>
+              <CardTitle className="font-display text-lg">Question {t.currentIdx + 1}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Problem Image */}
               {currentQuestion.problem_image_url && (
-                <div className="rounded-lg overflow-hidden bg-secondary/30 p-4 flex justify-center" onContextMenu={e => e.preventDefault()}>
-                  <img src={currentQuestion.problem_image_url} alt="Problem" draggable={false}
-                    className="max-w-full max-h-96 object-contain pointer-events-none" style={{ pointerEvents: "none" }} />
+                <div
+                  className="rounded-lg overflow-hidden bg-secondary/30 p-4 flex justify-center"
+                  onContextMenu={(e) => e.preventDefault()}
+                >
+                  <img
+                    src={currentQuestion.problem_image_url}
+                    alt="Problem"
+                    draggable={false}
+                    className="max-w-full max-h-96 object-contain pointer-events-none select-none"
+                    style={{ pointerEvents: "none", userSelect: "none" }}
+                  />
                 </div>
               )}
 
+              {/* Answer Input */}
               {currentQuestion.answer_type === "multiple_choice" && currentQuestion.multiple_choice_options ? (
-                <RadioGroup value={answers[currentQuestion.id] || ""} onValueChange={val => setAnswers(prev => ({ ...prev, [currentQuestion.id]: val }))}>
+                <RadioGroup
+                  value={t.answers[currentQuestion.id] || ""}
+                  onValueChange={(val) =>
+                    t.setAnswers((prev) => ({ ...prev, [currentQuestion.id]: val }))
+                  }
+                  disabled={t.submitted.has(currentQuestion.id)}
+                >
                   {(currentQuestion.multiple_choice_options as string[]).map((opt: string, i: number) => (
-                    <div key={i} className="flex items-center space-x-2 p-3 rounded-md bg-secondary/30 hover:bg-secondary/50 transition-colors">
+                    <div
+                      key={i}
+                      className={`flex items-center space-x-2 p-3 rounded-md transition-colors ${
+                        t.submitted.has(currentQuestion.id)
+                          ? "bg-secondary/20 opacity-60"
+                          : "bg-secondary/30 hover:bg-secondary/50"
+                      }`}
+                    >
                       <RadioGroupItem value={opt} id={`opt-${i}`} />
-                      <Label htmlFor={`opt-${i}`} className="cursor-pointer flex-1">{opt}</Label>
+                      <Label htmlFor={`opt-${i}`} className="cursor-pointer flex-1">
+                        {opt}
+                      </Label>
                     </div>
                   ))}
                 </RadioGroup>
               ) : (
-                <Input placeholder="Enter your answer..." value={answers[currentQuestion.id] || ""}
-                  onChange={e => setAnswers(prev => ({ ...prev, [currentQuestion.id]: e.target.value }))}
-                  className="bg-secondary/30 border-border text-lg" autoComplete="off" />
+                <Input
+                  placeholder="Enter your answer..."
+                  value={t.answers[currentQuestion.id] || ""}
+                  onChange={(e) =>
+                    t.setAnswers((prev) => ({ ...prev, [currentQuestion.id]: e.target.value }))
+                  }
+                  disabled={t.submitted.has(currentQuestion.id)}
+                  className="bg-secondary/30 border-border text-lg"
+                  autoComplete="off"
+                />
               )}
 
+              {/* Navigation & Submit */}
               <div className="flex items-center justify-between">
-                <Button variant="outline" onClick={() => setCurrentIdx(Math.max(0, currentIdx - 1))} disabled={currentIdx === 0}>
+                <Button
+                  variant="outline"
+                  onClick={() => t.setCurrentIdx(Math.max(0, t.currentIdx - 1))}
+                  disabled={t.currentIdx === 0}
+                >
                   <ChevronLeft className="h-4 w-4 mr-1" /> Previous
                 </Button>
-                <Button onClick={() => submitAnswer(currentQuestion.id, answers[currentQuestion.id] || "")}
-                  disabled={!answers[currentQuestion.id] || submitted.has(currentQuestion.id)}
-                  className={submitted.has(currentQuestion.id) ? "bg-muted text-muted-foreground" : "bg-gold text-gold-foreground hover:bg-gold/90"}>
-                  {submitted.has(currentQuestion.id) ? <><CheckCircle className="h-4 w-4 mr-1" /> Recorded</> : "Submit Answer"}
+
+                <Button
+                  onClick={() => t.submitAnswer(currentQuestion.id, t.answers[currentQuestion.id] || "")}
+                  disabled={!t.answers[currentQuestion.id]?.trim() || t.submitted.has(currentQuestion.id)}
+                  className={
+                    t.submitted.has(currentQuestion.id)
+                      ? "bg-muted text-muted-foreground"
+                      : "bg-gold text-gold-foreground hover:bg-gold/90"
+                  }
+                >
+                  {t.submitted.has(currentQuestion.id) ? (
+                    <>
+                      <CheckCircle className="h-4 w-4 mr-1" /> Recorded
+                    </>
+                  ) : (
+                    "Submit Answer"
+                  )}
                 </Button>
-                <Button variant="outline" onClick={() => setCurrentIdx(Math.min(questions.length - 1, currentIdx + 1))} disabled={currentIdx === questions.length - 1}>
+
+                <Button
+                  variant="outline"
+                  onClick={() => t.setCurrentIdx(Math.min(total - 1, t.currentIdx + 1))}
+                  disabled={t.currentIdx === total - 1}
+                >
                   Next <ChevronRight className="h-4 w-4 ml-1" />
                 </Button>
               </div>
 
+              {/* Question Navigator */}
               <div className="flex flex-wrap gap-2 pt-4 border-t border-border">
-                {questions.map((q, i) => (
-                  <button key={i} onClick={() => setCurrentIdx(i)}
+                {t.questions.map((q, i) => (
+                  <button
+                    key={i}
+                    onClick={() => t.setCurrentIdx(i)}
                     className={`h-8 w-8 rounded text-xs font-mono font-bold transition-colors ${
-                      i === currentIdx ? "bg-gold text-gold-foreground"
-                        : submitted.has(q.question_bank.id) ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                      i === t.currentIdx
+                        ? "bg-gold text-gold-foreground"
+                        : t.submitted.has(q.question_bank.id)
+                        ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                        : t.answers[q.question_bank.id]?.trim()
+                        ? "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
                         : "bg-secondary text-muted-foreground hover:bg-secondary/80"
-                    }`}>{i + 1}</button>
+                    }`}
+                  >
+                    {i + 1}
+                  </button>
                 ))}
               </div>
+
+              {/* Submit All Button */}
+              {progress < total && (
+                <div className="pt-2 text-center">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                    onClick={() => {
+                      if (window.confirm(`Submit all ${progress} answered questions and finish?`)) {
+                        t.handleAutoSubmit();
+                      }
+                    }}
+                  >
+                    Finish & Submit All ({progress}/{total})
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="bg-card border-border">
+            <CardContent className="py-12 text-center text-muted-foreground">
+              No questions available.
             </CardContent>
           </Card>
         )}
