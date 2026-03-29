@@ -49,6 +49,13 @@ const Index = () => {
       description: "Browse completed tournaments and results.",
       color: "text-muted-foreground",
     },
+    {
+      path: "/manual",
+      label: "Manual & COMA",
+      icon: HelpCircle,
+      description: "Platform guide, Elo system, and COMA membership.",
+      color: "text-gold",
+    },
   ];
 
   return (
