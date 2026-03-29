@@ -11,7 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Plus, ExternalLink, Play, CheckCircle2, Trash2, Users } from "lucide-react";
 
-const TournamentPanel = () => {
+interface TournamentPanelProps {
+  fixedType?: "tournament" | "olympiad" | "jee";
+}
+
+const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
   const { user, isAdmin } = useAuth();
   const [tournaments, setTournaments] = useState<any[]>([]);
   const [questions, setQuestions] = useState<any[]>([]);
@@ -23,6 +27,7 @@ const TournamentPanel = () => {
   const [timeLimit, setTimeLimit] = useState("60");
   const [telegramLink, setTelegramLink] = useState("");
   const [tournamentType, setTournamentType] = useState(fixedType || "tournament");
+
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
   const [categoryFilter, setCategoryFilter] = useState("");
   const [creating, setCreating] = useState(false);
