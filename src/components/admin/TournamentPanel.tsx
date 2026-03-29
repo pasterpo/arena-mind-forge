@@ -26,7 +26,7 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
   const [endTime, setEndTime] = useState("");
   const [timeLimit, setTimeLimit] = useState("60");
   const [telegramLink, setTelegramLink] = useState("");
-  const [tournamentType, setTournamentType] = useState(fixedType || "tournament");
+  const [tournamentType, setTournamentType] = useState<string>(fixedType || "tournament");
 
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
   const [categoryFilter, setCategoryFilter] = useState("");
