@@ -138,14 +138,14 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="font-display text-lg flex items-center gap-2">
-            <Plus className="h-5 w-5 text-gold" /> Create Competition
+            <Plus className="h-5 w-5 text-gold" /> Create {fixedType ? typeLabel[fixedType] || "Competition" : "Competition"}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-3">
             <div className="space-y-2">
               <Label>Title</Label>
-              <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="Competition Title" className="bg-secondary border-border" />
+              <Input value={title} onChange={e => setTitle(e.target.value)} placeholder={`${fixedType ? typeLabel[fixedType] : "Competition"} Title`} className="bg-secondary border-border" />
             </div>
             <div className="space-y-2">
               <Label>Type</Label>
