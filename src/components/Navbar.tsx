@@ -3,14 +3,17 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Shield, Trophy, User, LogOut, Swords, MessageSquare, History } from "lucide-react";
+import { Shield, Trophy, User, LogOut, Swords, MessageSquare, History, BookOpen, FlaskConical } from "lucide-react";
 
 const Navbar = () => {
   const { user, isAdminOrMod, signOut } = useAuth();
   const location = useLocation();
 
   const navItems = [
-    { path: "/", label: "The Arena", icon: Swords },
+    { path: "/", label: "Home", icon: Trophy },
+    { path: "/tournaments", label: "Tournaments", icon: Swords },
+    { path: "/olympiads", label: "Olympiads", icon: BookOpen },
+    { path: "/jee", label: "JEE Mocks", icon: FlaskConical },
     { path: "/leaderboard", label: "Leaderboard", icon: Trophy },
     { path: "/past", label: "Past", icon: History },
     { path: "/discussions", label: "Discuss", icon: MessageSquare },

@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { MessageSquare, Plus, Pin, Lock, Send, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
-import { useAuth as useAuthHook } from "@/hooks/useAuth";
+
 
 const Discussions = () => {
   const { user, isAdminOrMod } = useAuth();

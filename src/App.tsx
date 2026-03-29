@@ -14,6 +14,9 @@ import Results from "./pages/Results";
 import PastTournaments from "./pages/PastTournaments";
 import Discussions from "./pages/Discussions";
 import Admin from "./pages/Admin";
+import Tournaments from "./pages/Tournaments";
+import Olympiads from "./pages/Olympiads";
+import JeeMocks from "./pages/JeeMocks";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -41,6 +44,9 @@ const ProtectedLayout = () => {
       <Navbar />
       <Routes>
         <Route path="/" element={<Index />} />
+        <Route path="/tournaments" element={<Tournaments />} />
+        <Route path="/olympiads" element={<Olympiads />} />
+        <Route path="/jee" element={<JeeMocks />} />
         <Route path="/leaderboard" element={<Leaderboard />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/tournament/:id" element={<Tournament />} />
