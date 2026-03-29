@@ -33,7 +33,9 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
   const [creating, setCreating] = useState(false);
 
   const fetchData = async () => {
-    const { data: t } = await supabase.from("tournaments").select("*").order("created_at", { ascending: false });
+    let query = supabase.from("tournaments").select("*").order("created_at", { ascending: false });
+    if (fixedType) query = query.eq("tournament_type", fixedType);
+    const { data: t } = await query;
     if (t) setTournaments(t);
 
     const { data: q } = await supabase.from("question_bank").select("*").eq("visibility", "published").order("created_at", { ascending: false });
