@@ -75,6 +75,12 @@ const Admin = () => {
           <TabsTrigger value="tournaments" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground">
             Tournaments
           </TabsTrigger>
+          <TabsTrigger value="olympiads" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground">
+            Olympiads
+          </TabsTrigger>
+          <TabsTrigger value="jee" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground">
+            JEE Mocks
+          </TabsTrigger>
           {(isAdmin || true) && (
             <TabsTrigger value="users" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground">
               Users
@@ -92,7 +98,13 @@ const Admin = () => {
           <QuestionBankBrowser />
         </TabsContent>
         <TabsContent value="tournaments">
-          <TournamentPanel />
+          <TournamentPanel fixedType="tournament" />
+        </TabsContent>
+        <TabsContent value="olympiads">
+          <TournamentPanel fixedType="olympiad" />
+        </TabsContent>
+        <TabsContent value="jee">
+          <TournamentPanel fixedType="jee" />
         </TabsContent>
         <TabsContent value="users">
           <UserManagement />

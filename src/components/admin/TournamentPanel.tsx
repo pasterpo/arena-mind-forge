@@ -147,17 +147,19 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
               <Label>Title</Label>
               <Input value={title} onChange={e => setTitle(e.target.value)} placeholder={`${fixedType ? typeLabel[fixedType] : "Competition"} Title`} className="bg-secondary border-border" />
             </div>
-            <div className="space-y-2">
-              <Label>Type</Label>
-              <Select value={tournamentType} onValueChange={setTournamentType}>
-                <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="tournament">Tournament (Continuous)</SelectItem>
-                  <SelectItem value="olympiad">Olympiad (Scheduled)</SelectItem>
-                  <SelectItem value="jee">JEE Mock (Scheduled)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {!fixedType && (
+              <div className="space-y-2">
+                <Label>Type</Label>
+                <Select value={tournamentType} onValueChange={setTournamentType}>
+                  <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="tournament">Tournament (Continuous)</SelectItem>
+                    <SelectItem value="olympiad">Olympiad (Scheduled)</SelectItem>
+                    <SelectItem value="jee">JEE Mock (Scheduled)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Time Limit (minutes)</Label>
               <Input value={timeLimit} onChange={e => setTimeLimit(e.target.value)} type="number" className="bg-secondary border-border" />
