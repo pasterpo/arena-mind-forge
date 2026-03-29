@@ -22,7 +22,7 @@ const TournamentPanel = () => {
   const [endTime, setEndTime] = useState("");
   const [timeLimit, setTimeLimit] = useState("60");
   const [telegramLink, setTelegramLink] = useState("");
-  const [tournamentType, setTournamentType] = useState("tournament");
+  const [tournamentType, setTournamentType] = useState(fixedType || "tournament");
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
   const [categoryFilter, setCategoryFilter] = useState("");
   const [creating, setCreating] = useState(false);
