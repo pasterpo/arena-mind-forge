@@ -1,7 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
-import { Swords, BookOpen, FlaskConical, Trophy, MessageSquare, History } from "lucide-react";
+import { Swords, BookOpen, FlaskConical, Trophy, MessageSquare, History, HelpCircle } from "lucide-react";
 
 const Index = () => {
   const navigate = useNavigate();
