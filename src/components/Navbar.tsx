@@ -18,6 +18,7 @@ const Navbar = () => {
     { path: "/past", label: "Past", icon: History },
     { path: "/discussions", label: "Discuss", icon: MessageSquare },
     { path: "/profile", label: "Profile", icon: User },
+    { path: "/manual", label: "Manual", icon: HelpCircle },
   ];
 
   if (isAdminOrMod) {

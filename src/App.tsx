@@ -55,6 +55,7 @@ const ProtectedLayout = () => {
         <Route path="/past" element={<PastTournaments />} />
         <Route path="/discussions" element={<Discussions />} />
         <Route path="/admin" element={<Admin />} />
+        <Route path="/manual" element={<Manual />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </div>
