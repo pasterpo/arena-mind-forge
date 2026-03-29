@@ -17,6 +17,7 @@ import Admin from "./pages/Admin";
 import Tournaments from "./pages/Tournaments";
 import Olympiads from "./pages/Olympiads";
 import JeeMocks from "./pages/JeeMocks";
+import Manual from "./pages/Manual";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
