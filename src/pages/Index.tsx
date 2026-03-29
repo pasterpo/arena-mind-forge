@@ -1,7 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
-import { Swords, BookOpen, FlaskConical, Trophy, MessageSquare, History } from "lucide-react";
+import { Swords, BookOpen, FlaskConical, Trophy, MessageSquare, History, HelpCircle } from "lucide-react";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -48,6 +48,13 @@ const Index = () => {
       icon: History,
       description: "Browse completed tournaments and results.",
       color: "text-muted-foreground",
+    },
+    {
+      path: "/manual",
+      label: "Manual & COMA",
+      icon: HelpCircle,
+      description: "Platform guide, Elo system, and COMA membership.",
+      color: "text-gold",
     },
   ];
 

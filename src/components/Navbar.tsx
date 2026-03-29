@@ -3,7 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Shield, Trophy, User, LogOut, Swords, MessageSquare, History, BookOpen, FlaskConical } from "lucide-react";
+import { Shield, Trophy, User, LogOut, Swords, MessageSquare, History, BookOpen, FlaskConical, HelpCircle } from "lucide-react";
 
 const Navbar = () => {
   const { user, isAdminOrMod, signOut } = useAuth();
@@ -18,6 +18,7 @@ const Navbar = () => {
     { path: "/past", label: "Past", icon: History },
     { path: "/discussions", label: "Discuss", icon: MessageSquare },
     { path: "/profile", label: "Profile", icon: User },
+    { path: "/manual", label: "Manual", icon: HelpCircle },
   ];
 
   if (isAdminOrMod) {
