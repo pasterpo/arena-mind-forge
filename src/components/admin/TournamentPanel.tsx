@@ -11,7 +11,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { Plus, ExternalLink, Play, CheckCircle2, Trash2, Users } from "lucide-react";
 
-const TournamentPanel = () => {
+interface TournamentPanelProps {
+  fixedType?: "tournament" | "olympiad" | "jee";
+}
+
+const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
   const { user, isAdmin } = useAuth();
   const [tournaments, setTournaments] = useState<any[]>([]);
   const [questions, setQuestions] = useState<any[]>([]);
@@ -22,13 +26,16 @@ const TournamentPanel = () => {
   const [endTime, setEndTime] = useState("");
   const [timeLimit, setTimeLimit] = useState("60");
   const [telegramLink, setTelegramLink] = useState("");
-  const [tournamentType, setTournamentType] = useState("tournament");
+  const [tournamentType, setTournamentType] = useState<string>(fixedType || "tournament");
+
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
   const [categoryFilter, setCategoryFilter] = useState("");
   const [creating, setCreating] = useState(false);
 
   const fetchData = async () => {
-    const { data: t } = await supabase.from("tournaments").select("*").order("created_at", { ascending: false });
+    let query = supabase.from("tournaments").select("*").order("created_at", { ascending: false });
+    if (fixedType) query = query.eq("tournament_type", fixedType);
+    const { data: t } = await query;
     if (t) setTournaments(t);
 
     const { data: q } = await supabase.from("question_bank").select("*").eq("visibility", "published").order("created_at", { ascending: false });
@@ -131,26 +138,28 @@ const TournamentPanel = () => {
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="font-display text-lg flex items-center gap-2">
-            <Plus className="h-5 w-5 text-gold" /> Create Competition
+            <Plus className="h-5 w-5 text-gold" /> Create {fixedType ? typeLabel[fixedType] || "Competition" : "Competition"}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 md:grid-cols-3">
             <div className="space-y-2">
               <Label>Title</Label>
-              <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="Competition Title" className="bg-secondary border-border" />
+              <Input value={title} onChange={e => setTitle(e.target.value)} placeholder={`${fixedType ? typeLabel[fixedType] : "Competition"} Title`} className="bg-secondary border-border" />
             </div>
-            <div className="space-y-2">
-              <Label>Type</Label>
-              <Select value={tournamentType} onValueChange={setTournamentType}>
-                <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="tournament">Tournament (Continuous)</SelectItem>
-                  <SelectItem value="olympiad">Olympiad (Scheduled)</SelectItem>
-                  <SelectItem value="jee">JEE Mock (Scheduled)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {!fixedType && (
+              <div className="space-y-2">
+                <Label>Type</Label>
+                <Select value={tournamentType} onValueChange={setTournamentType}>
+                  <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="tournament">Tournament (Continuous)</SelectItem>
+                    <SelectItem value="olympiad">Olympiad (Scheduled)</SelectItem>
+                    <SelectItem value="jee">JEE Mock (Scheduled)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Time Limit (minutes)</Label>
               <Input value={timeLimit} onChange={e => setTimeLimit(e.target.value)} type="number" className="bg-secondary border-border" />
