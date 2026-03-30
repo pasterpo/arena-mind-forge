@@ -137,7 +137,7 @@ const CompetitionList = ({ tournamentType, title, subtitle }: CompetitionListPro
               {isActive ? (
                 <span>Ends: <span className="text-gold font-mono font-bold">{formatCountdown(t.end_timestamp)}</span></span>
               ) : (
-                <span>Starts: {format(new Date(t.start_timestamp), "MMM d, yyyy HH:mm")} UTC</span>
+                <span>Starts: {format(new Date(new Date(t.start_timestamp).getTime() + 5.5 * 60 * 60 * 1000), "MMM d, yyyy HH:mm")} IST</span>
               )}
             </div>
             <div className="flex items-center gap-1">
