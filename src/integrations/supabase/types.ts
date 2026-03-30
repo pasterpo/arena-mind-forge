@@ -14,6 +14,21 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_config: {
+        Row: {
+          key: string
+          value: Json
+        }
+        Insert: {
+          key: string
+          value: Json
+        }
+        Update: {
+          key?: string
+          value?: Json
+        }
+        Relationships: []
+      }
       discussion_replies: {
         Row: {
           body: string
@@ -238,6 +253,8 @@ export type Database = {
           id: string
           multiple_choice_options: Json | null
           problem_image_url: string | null
+          solution_image_url: string | null
+          solution_text: string | null
           updated_at: string
           visibility: Database["public"]["Enums"]["question_visibility"]
         }
@@ -251,6 +268,8 @@ export type Database = {
           id?: string
           multiple_choice_options?: Json | null
           problem_image_url?: string | null
+          solution_image_url?: string | null
+          solution_text?: string | null
           updated_at?: string
           visibility?: Database["public"]["Enums"]["question_visibility"]
         }
@@ -264,6 +283,8 @@ export type Database = {
           id?: string
           multiple_choice_options?: Json | null
           problem_image_url?: string | null
+          solution_image_url?: string | null
+          solution_text?: string | null
           updated_at?: string
           visibility?: Database["public"]["Enums"]["question_visibility"]
         }
@@ -453,9 +474,54 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      auto_complete_tournaments: { Args: never; Returns: undefined }
       calculate_elo_changes: {
         Args: { p_tournament_id: string }
         Returns: undefined
+      }
+      get_category_leaderboard: {
+        Args: {
+          p_limit?: number
+          p_type: Database["public"]["Enums"]["tournament_type"]
+        }
+        Returns: {
+          category_points: number
+          elo_rating: number
+          tournaments_played: number
+          user_id: string
+          username: string
+        }[]
+      }
+      get_discussion_reply_counts: {
+        Args: never
+        Returns: {
+          discussion_id: string
+          reply_count: number
+        }[]
+      }
+      get_tournament_questions: {
+        Args: { p_tournament_id: string }
+        Returns: {
+          answer_type: string
+          category: string
+          difficulty_weight: number
+          id: string
+          multiple_choice_options: Json
+          problem_image_url: string
+          question_id: string
+          question_order: number
+        }[]
+      }
+      get_tournament_results: {
+        Args: { p_tournament_id: string }
+        Returns: {
+          correct_count: number
+          elo_rating: number
+          total_count: number
+          total_time: number
+          user_id: string
+          username: string
+        }[]
       }
       has_role: {
         Args: {
@@ -463,6 +529,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      increment_penalty_strikes: {
+        Args: { p_user_id: string }
+        Returns: undefined
       }
       is_admin_or_moderator: { Args: { _user_id: string }; Returns: boolean }
       update_global_ranks: { Args: never; Returns: undefined }

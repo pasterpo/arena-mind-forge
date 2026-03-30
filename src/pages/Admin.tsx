@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useModeratorPermissions } from "@/hooks/useModeratorPermissions";
 import { Navigate } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
@@ -14,6 +15,7 @@ import { Shield, Swords, Users, ImageIcon, MessageSquare, Library } from "lucide
 
 const Admin = () => {
   const { user, isAdmin, isAdminOrMod, loading } = useAuth();
+  const perms = useModeratorPermissions();
   const [questionCount, setQuestionCount] = useState(0);
   const [userCount, setUserCount] = useState(0);
   const [tournamentCount, setTournamentCount] = useState(0);
@@ -31,6 +33,12 @@ const Admin = () => {
 
   if (loading) return <div className="container py-16 text-center text-muted-foreground">Loading...</div>;
   if (!user || !isAdminOrMod) return <Navigate to="/" replace />;
+
+  const showForge = perms.can_create_problems || perms.can_edit_problems;
+  const showBank = perms.can_edit_problems || perms.can_delete_problems;
+  const showTournaments = perms.can_create_tournaments || perms.can_edit_tournaments;
+  const showUsers = isAdmin || perms.can_manage_users;
+  const showDiscussions = perms.can_view_discussions || perms.can_moderate_discussions;
 
   return (
     <div className="container py-8 space-y-6">
@@ -57,61 +65,61 @@ const Admin = () => {
         </Card>
         <Card className="bg-card border-border">
           <CardContent className="pt-6 text-center">
-            <Swords className="h-8 w-8 mx-auto mb-2 text-bronze" />
+            <Swords className="h-8 w-8 mx-auto mb-2 text-amber-700" />
             <p className="text-2xl font-bold font-mono text-foreground">{tournamentCount}</p>
-            <p className="text-sm text-muted-foreground">Total Tournaments</p>
+            <p className="text-sm text-muted-foreground">Total Competitions</p>
           </CardContent>
         </Card>
       </div>
 
-      <Tabs defaultValue="forge" className="space-y-4">
+      <Tabs defaultValue={showForge ? "forge" : showTournaments ? "tournaments" : "discussions"} className="space-y-4">
         <TabsList className="bg-secondary border border-border flex-wrap h-auto gap-1 p-1">
-          <TabsTrigger value="forge" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground">
-            Problem Forge
-          </TabsTrigger>
-          <TabsTrigger value="bank" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground">
-            Question Bank
-          </TabsTrigger>
-          <TabsTrigger value="tournaments" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground">
-            Tournaments
-          </TabsTrigger>
-          <TabsTrigger value="olympiads" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground">
-            Olympiads
-          </TabsTrigger>
-          <TabsTrigger value="jee" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground">
-            JEE Mocks
-          </TabsTrigger>
-          {(isAdmin || true) && (
+          {showForge && (
+            <TabsTrigger value="forge" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground">
+              Problem Forge
+            </TabsTrigger>
+          )}
+          {showBank && (
+            <TabsTrigger value="bank" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground">
+              Question Bank
+            </TabsTrigger>
+          )}
+          {showTournaments && (
+            <>
+              <TabsTrigger value="tournaments" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground">
+                Tournaments
+              </TabsTrigger>
+              <TabsTrigger value="olympiads" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground">
+                Olympiads
+              </TabsTrigger>
+              <TabsTrigger value="jee" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground">
+                JEE Mocks
+              </TabsTrigger>
+            </>
+          )}
+          {showUsers && (
             <TabsTrigger value="users" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground">
               Users
             </TabsTrigger>
           )}
-          <TabsTrigger value="discussions" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground">
-            Discussions
-          </TabsTrigger>
+          {showDiscussions && (
+            <TabsTrigger value="discussions" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground">
+              Discussions
+            </TabsTrigger>
+          )}
         </TabsList>
 
-        <TabsContent value="forge">
-          <ProblemForge onSaved={refreshStats} />
-        </TabsContent>
-        <TabsContent value="bank">
-          <QuestionBankBrowser />
-        </TabsContent>
-        <TabsContent value="tournaments">
-          <TournamentPanel fixedType="tournament" />
-        </TabsContent>
-        <TabsContent value="olympiads">
-          <TournamentPanel fixedType="olympiad" />
-        </TabsContent>
-        <TabsContent value="jee">
-          <TournamentPanel fixedType="jee" />
-        </TabsContent>
-        <TabsContent value="users">
-          <UserManagement />
-        </TabsContent>
-        <TabsContent value="discussions">
-          <DiscussionPanel />
-        </TabsContent>
+        {showForge && <TabsContent value="forge"><ProblemForge onSaved={refreshStats} /></TabsContent>}
+        {showBank && <TabsContent value="bank"><QuestionBankBrowser /></TabsContent>}
+        {showTournaments && (
+          <>
+            <TabsContent value="tournaments"><TournamentPanel fixedType="tournament" /></TabsContent>
+            <TabsContent value="olympiads"><TournamentPanel fixedType="olympiad" /></TabsContent>
+            <TabsContent value="jee"><TournamentPanel fixedType="jee" /></TabsContent>
+          </>
+        )}
+        {showUsers && <TabsContent value="users"><UserManagement /></TabsContent>}
+        {showDiscussions && <TabsContent value="discussions"><DiscussionPanel /></TabsContent>}
       </Tabs>
     </div>
   );

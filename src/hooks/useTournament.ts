@@ -5,7 +5,6 @@ import { differenceInSeconds } from "date-fns";
 import { toast } from "sonner";
 import type { User } from "@supabase/supabase-js";
 
-// Seeded shuffle so question order is consistent per user per tournament
 const seededShuffle = <T,>(arr: T[], seed: string): T[] => {
   const result = [...arr];
   let hash = 0;
@@ -38,19 +37,19 @@ export const useTournament = (id: string | undefined, user: User | null) => {
   const [participantCount, setParticipantCount] = useState(0);
   const [isRegistered, setIsRegistered] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [tournamentState, setTournamentState] = useState<"loading" | "not_found" | "not_started" | "not_registered" | "ended" | "ready" | "in_progress" | "locked_out">("loading");
+  const [tournamentState, setTournamentState] = useState<"loading" | "not_found" | "not_started" | "ended" | "ready" | "in_progress" | "locked_out">("loading");
   const startTimeRef = useRef<Date>(new Date());
   const autoSubmittedRef = useRef(false);
   const questionsRef = useRef<any[]>([]);
   const submittedRef = useRef<Set<string>>(new Set());
   const answersRef = useRef<Record<string, string>>({});
+  const strikesRef = useRef(0);
 
-  // Keep refs in sync
   useEffect(() => { questionsRef.current = questions; }, [questions]);
   useEffect(() => { submittedRef.current = submitted; }, [submitted]);
   useEffect(() => { answersRef.current = answers; }, [answers]);
+  useEffect(() => { strikesRef.current = strikes; }, [strikes]);
 
-  // Fetch tournament data
   useEffect(() => {
     if (!id) return;
     const fetchData = async () => {
@@ -79,26 +78,34 @@ export const useTournament = (id: string | undefined, user: User | null) => {
         return;
       }
 
-      // Get questions with seeded shuffle
-      const { data: tq } = await supabase
-        .from("tournament_questions")
-        .select("*, question_bank(*)")
-        .eq("tournament_id", id)
-        .order("question_order");
-      if (tq) {
+      // BUG-10 FIX: Use RPC to get questions WITHOUT correct answers
+      const { data: tqData } = await supabase.rpc("get_tournament_questions", {
+        p_tournament_id: id,
+      });
+      if (tqData) {
+        // Transform to match expected structure
+        const formattedQuestions = (tqData as any[]).map((q: any) => ({
+          id: q.id,
+          question_bank: {
+            id: q.question_id,
+            problem_image_url: q.problem_image_url,
+            answer_type: q.answer_type,
+            multiple_choice_options: q.multiple_choice_options,
+            difficulty_weight: q.difficulty_weight,
+            category: q.category,
+          },
+        }));
         const seed = user ? `${user.id}-${id}` : id;
-        const shuffled = seededShuffle(tq, seed);
+        const shuffled = seededShuffle(formattedQuestions, seed);
         setQuestions(shuffled);
       }
 
-      // Participant count
       const { count } = await supabase
         .from("tournament_participants")
         .select("*", { count: "exact", head: true })
         .eq("tournament_id", id);
       setParticipantCount(count || 0);
 
-      // Check registration & existing submissions
       if (user) {
         const { data: reg } = await supabase
           .from("tournament_participants")
@@ -115,7 +122,6 @@ export const useTournament = (id: string | undefined, user: User | null) => {
         }
         setIsRegistered(true);
 
-        // Restore existing answers
         const { data: subs } = await supabase
           .from("submissions")
           .select("question_id, submitted_answer")
@@ -132,7 +138,6 @@ export const useTournament = (id: string | undefined, user: User | null) => {
           setSubmitted(existingSubmitted);
         }
 
-        // Check existing penalty strikes for this tournament
         const { count: penaltyCount } = await supabase
           .from("penalty_logs")
           .select("*", { count: "exact", head: true })
@@ -154,12 +159,12 @@ export const useTournament = (id: string | undefined, user: User | null) => {
     fetchData();
   }, [id, user]);
 
-  // Clock
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
+  // DECO-07 FIX: Atomic penalty increment
   const logPenalty = useCallback(async (type: string) => {
     if (!user || !id) return;
     await supabase.from("penalty_logs").insert({
@@ -167,13 +172,8 @@ export const useTournament = (id: string | undefined, user: User | null) => {
       tournament_id: id,
       penalty_type: type as any,
     });
-    // Increment penalty_strikes on profile for tab_switch
     if (type === "tab_switch") {
-      await supabase.rpc("has_role", { _user_id: user.id, _role: "competitor" }); // just to check
-      const { data: profile } = await supabase.from("profiles").select("penalty_strikes").eq("id", user.id).single();
-      if (profile) {
-        await supabase.from("profiles").update({ penalty_strikes: profile.penalty_strikes + 1 }).eq("id", user.id);
-      }
+      await supabase.rpc("increment_penalty_strikes", { p_user_id: user.id });
     }
   }, [user, id]);
 
@@ -220,13 +220,14 @@ export const useTournament = (id: string | undefined, user: User | null) => {
         );
       }
     }
+    // BUG-03 FALLBACK: Try auto-completing tournaments
+    try { await supabase.rpc("auto_complete_tournaments"); } catch (_) {}
     setLockedOut(true);
     setTournamentState("locked_out");
     toast.info("Tournament ended. All answers submitted.");
     setTimeout(() => navigate(`/results/${id}`), 3000);
   }, [user, id, navigate]);
 
-  // Auto-submit at tournament end
   useEffect(() => {
     if (!tournament || !started || autoSubmittedRef.current) return;
     if (differenceInSeconds(new Date(tournament.end_timestamp), now) <= 0) {
@@ -246,9 +247,10 @@ export const useTournament = (id: string | undefined, user: User | null) => {
     }
   }, []);
 
+  // DECO-08 FIX: Use ref for strikes to avoid closure bug
   const handleStrike = useCallback(() => {
     setIsFullscreen(false);
-    const newStrikes = strikes + 1;
+    const newStrikes = strikesRef.current + 1;
     setStrikes(newStrikes);
     logPenalty("fullscreen_exit");
     if (newStrikes >= 2) {
@@ -259,9 +261,8 @@ export const useTournament = (id: string | undefined, user: User | null) => {
     } else {
       setShowWarning(true);
     }
-  }, [strikes, handleAutoSubmit, logPenalty]);
+  }, [handleAutoSubmit, logPenalty]);
 
-  // Time remaining
   const timeRemaining = tournament
     ? Math.max(0, differenceInSeconds(new Date(tournament.end_timestamp), now))
     : 0;

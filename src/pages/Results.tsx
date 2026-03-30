@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { TierBadge } from "@/components/TierBadge";
 import { Trophy, Medal, Clock, ArrowLeft, CheckCircle, XCircle, ExternalLink, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { format } from "date-fns";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const Results = () => {
   const { id } = useParams<{ id: string }>();
@@ -19,6 +19,7 @@ const Results = () => {
   const [loading, setLoading] = useState(true);
   const [showSolutions, setShowSolutions] = useState(false);
   const [eloChanges, setEloChanges] = useState<Record<string, number>>({});
+  const [myAnswers, setMyAnswers] = useState<Record<string, any>>({});
 
   useEffect(() => {
     if (!id) return;
@@ -33,15 +34,38 @@ const Results = () => {
         .order("question_order");
       if (tqs) setQuestions(tqs);
 
-      // Aggregate submissions per user
-      const { data: subs } = await supabase
-        .from("submissions")
-        .select("user_id, is_correct, question_id, submitted_answer, time_taken_seconds")
-        .eq("tournament_id", id);
+      // BUG-01 FIX: Use RPC to get results for ALL users
+      const { data: tournamentResults } = await supabase.rpc("get_tournament_results", {
+        p_tournament_id: id,
+      });
+      if (tournamentResults) {
+        setResults(tournamentResults.map((r: any) => ({
+          user_id: r.user_id,
+          username: r.username,
+          elo: r.elo_rating,
+          correct: Number(r.correct_count),
+          total: Number(r.total_count),
+          totalTime: Number(r.total_time),
+        })));
+      }
 
-      const { data: profiles } = await supabase.from("profiles").select("id, username, elo_rating");
+      // Fetch own answers for solutions section
+      if (user) {
+        const { data: mySubs } = await supabase
+          .from("submissions")
+          .select("question_id, submitted_answer, is_correct")
+          .eq("tournament_id", id)
+          .eq("user_id", user.id);
+        if (mySubs) {
+          const answers: Record<string, any> = {};
+          mySubs.forEach((s: any) => {
+            answers[s.question_id] = { answer: s.submitted_answer, correct: s.is_correct };
+          });
+          setMyAnswers(answers);
+        }
+      }
 
-      // Elo changes
+      // BUG-02 FIX: elo_history now visible to all for completed tournaments
       const { data: eloHist } = await supabase.from("elo_history").select("*").eq("tournament_id", id);
       if (eloHist) {
         const changes: Record<string, number> = {};
@@ -49,40 +73,22 @@ const Results = () => {
         setEloChanges(changes);
       }
 
-      if (subs && profiles) {
-        const userMap: Record<string, any> = {};
-        subs.forEach((s: any) => {
-          if (!userMap[s.user_id]) {
-            const profile = profiles.find((p: any) => p.id === s.user_id);
-            userMap[s.user_id] = {
-              user_id: s.user_id,
-              username: profile?.username || "Anonymous",
-              elo: profile?.elo_rating || 1200,
-              correct: 0,
-              total: 0,
-              totalTime: 0,
-              answers: {} as Record<string, any>,
-            };
-          }
-          userMap[s.user_id].total++;
-          if (s.is_correct) userMap[s.user_id].correct++;
-          userMap[s.user_id].totalTime += s.time_taken_seconds || 0;
-          userMap[s.user_id].answers[s.question_id] = { answer: s.submitted_answer, correct: s.is_correct };
-        });
-
-        const sorted = Object.values(userMap).sort((a: any, b: any) => {
-          if (b.correct !== a.correct) return b.correct - a.correct;
-          return a.totalTime - b.totalTime;
-        });
-
-        setResults(sorted);
-      }
       setLoading(false);
     };
     fetchResults();
-  }, [id]);
+  }, [id, user]);
 
-  if (loading) return <div className="container py-16 text-center text-muted-foreground">Loading results...</div>;
+  if (loading) {
+    return (
+      <div className="container py-8 space-y-6">
+        <Skeleton className="h-10 w-64" />
+        <div className="grid gap-4 md:grid-cols-3">
+          <Skeleton className="h-40" /><Skeleton className="h-40" /><Skeleton className="h-40" />
+        </div>
+        <Skeleton className="h-64" />
+      </div>
+    );
+  }
   if (!tournament) return <div className="container py-16 text-center text-muted-foreground">Tournament not found.</div>;
 
   const isCompleted = tournament.status === "completed";
@@ -92,7 +98,7 @@ const Results = () => {
   return (
     <div className="container py-8 space-y-6">
       <div className="flex items-center gap-3 flex-wrap">
-        <Link to="/">
+        <Link to="/past">
           <Button variant="ghost" size="icon"><ArrowLeft className="h-5 w-5" /></Button>
         </Link>
         <Trophy className="h-6 w-6 text-gold" />
@@ -110,7 +116,6 @@ const Results = () => {
         )}
       </div>
 
-      {/* Your result highlight */}
       {myResult && (
         <Card className="bg-card border-gold/20">
           <CardContent className="pt-6 flex items-center justify-between">
@@ -130,17 +135,18 @@ const Results = () => {
         </Card>
       )}
 
-      {/* Podium */}
       {results.length > 0 && (
         <div className="grid gap-4 md:grid-cols-3">
           {results.slice(0, 3).map((r: any, i: number) => {
             const medals = ["🥇", "🥈", "🥉"];
-            const borderColors = ["border-gold/50", "border-gray-400/50", "border-bronze/50"];
+            const borderColors = ["border-gold/50", "border-gray-400/50", "border-amber-700/50"];
             return (
               <Card key={r.user_id} className={`bg-card ${borderColors[i]} border-2`}>
                 <CardContent className="pt-6 text-center space-y-2">
                   <span className="text-4xl">{medals[i]}</span>
-                  <p className="font-display text-xl font-bold text-foreground">{r.username}</p>
+                  <p className="font-display text-xl font-bold text-foreground">
+                    <Link to={`/profile/${r.user_id}`} className="hover:text-gold transition-colors">{r.username}</Link>
+                  </p>
                   <TierBadge elo={r.elo} />
                   <p className="text-2xl font-mono font-bold text-gold">{r.correct}/{r.total}</p>
                   <p className="text-xs text-muted-foreground flex items-center justify-center gap-1">
@@ -158,7 +164,6 @@ const Results = () => {
         </div>
       )}
 
-      {/* Full Leaderboard */}
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="font-display flex items-center gap-2">
@@ -187,7 +192,10 @@ const Results = () => {
                       </span>
                     </TableCell>
                     <TableCell className="font-medium text-foreground">
-                      {r.username} {r.user_id === user?.id && <Badge variant="outline" className="ml-1 text-xs">You</Badge>}
+                      <Link to={`/profile/${r.user_id}`} className="hover:text-gold transition-colors">
+                        {r.username}
+                      </Link>
+                      {r.user_id === user?.id && <Badge variant="outline" className="ml-1 text-xs">You</Badge>}
                     </TableCell>
                     <TableCell><TierBadge elo={r.elo} /></TableCell>
                     <TableCell className="text-center font-mono font-bold text-foreground">{r.correct}/{r.total}</TableCell>
@@ -214,7 +222,6 @@ const Results = () => {
         </CardContent>
       </Card>
 
-      {/* Solutions (only if completed) */}
       {isCompleted && questions.length > 0 && (
         <Card className="bg-card border-border">
           <CardHeader>
@@ -230,7 +237,7 @@ const Results = () => {
           {showSolutions && (
             <CardContent className="space-y-4">
               {questions.map((tq: any, i: number) => {
-                const myAnswer = myResult?.answers?.[tq.question_bank.id];
+                const myAnswer = myAnswers[tq.question_bank.id];
                 return (
                   <div key={tq.id} className="p-4 rounded-lg bg-secondary/30 border border-border space-y-3">
                     <div className="flex items-center justify-between">
@@ -242,11 +249,19 @@ const Results = () => {
                       )}
                     </div>
                     {tq.question_bank.problem_image_url && (
-                      <img
-                        src={tq.question_bank.problem_image_url}
-                        alt={`Question ${i + 1}`}
-                        className="max-w-full max-h-64 object-contain rounded"
-                      />
+                      <img src={tq.question_bank.problem_image_url} alt={`Question ${i + 1}`} className="max-w-full max-h-64 object-contain rounded" />
+                    )}
+                    {tq.question_bank.solution_image_url && (
+                      <div className="border-t border-border pt-3">
+                        <p className="text-xs text-muted-foreground mb-2">Solution:</p>
+                        <img src={tq.question_bank.solution_image_url} alt={`Solution ${i + 1}`} className="max-w-full max-h-64 object-contain rounded" />
+                      </div>
+                    )}
+                    {tq.question_bank.solution_text && (
+                      <div className="border-t border-border pt-3">
+                        <p className="text-xs text-muted-foreground mb-1">Explanation:</p>
+                        <p className="text-sm text-foreground whitespace-pre-wrap">{tq.question_bank.solution_text}</p>
+                      </div>
                     )}
                     <div className="flex items-center gap-2 flex-wrap">
                       <Badge className="bg-green-500/20 text-green-400 border-green-500/30">

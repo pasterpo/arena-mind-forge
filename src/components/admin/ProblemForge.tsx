@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { Upload, X, Image as ImageIcon } from "lucide-react";
+import { Upload, X } from "lucide-react";
 
 interface ProblemForgeProps {
   onSaved: () => void;
@@ -19,8 +20,11 @@ const ProblemForge = ({ onSaved }: ProblemForgeProps) => {
   const { user } = useAuth();
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [solutionFile, setSolutionFile] = useState<File | null>(null);
+  const [solutionPreview, setSolutionPreview] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [correctAnswer, setCorrectAnswer] = useState("");
+  const [solutionText, setSolutionText] = useState("");
   const [answerType, setAnswerType] = useState<"text" | "multiple_choice">("text");
   const [mcOptions, setMcOptions] = useState(["", "", "", ""]);
   const [difficulty, setDifficulty] = useState([5]);
@@ -28,63 +32,64 @@ const ProblemForge = ({ onSaved }: ProblemForgeProps) => {
   const [published, setPublished] = useState(false);
   const [dragActive, setDragActive] = useState(false);
 
-  const handleFile = (file: File) => {
-    if (!file.type.startsWith("image/")) {
-      toast.error("Only image files are accepted.");
-      return;
-    }
-    setImageFile(file);
+  const handleFile = (file: File, type: "problem" | "solution") => {
+    if (!file.type.startsWith("image/")) { toast.error("Only image files are accepted."); return; }
     const reader = new FileReader();
-    reader.onload = (e) => setImagePreview(e.target?.result as string);
+    if (type === "problem") {
+      setImageFile(file);
+      reader.onload = (e) => setImagePreview(e.target?.result as string);
+    } else {
+      setSolutionFile(file);
+      reader.onload = (e) => setSolutionPreview(e.target?.result as string);
+    }
     reader.readAsDataURL(file);
   };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragActive(false);
-    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0], "problem");
   }, []);
+
+  const uploadImage = async (file: File) => {
+    const ext = file.name.split(".").pop();
+    const path = `${crypto.randomUUID()}.${ext}`;
+    const { error } = await supabase.storage.from("problem_images").upload(path, file);
+    if (error) throw error;
+    return supabase.storage.from("problem_images").getPublicUrl(path).data.publicUrl;
+  };
 
   const handleSave = async () => {
     if (!imageFile || !correctAnswer || !user) {
       toast.error("Please upload an image and provide a correct answer.");
       return;
     }
-
     setUploading(true);
     try {
-      const ext = imageFile.name.split(".").pop();
-      const path = `${crypto.randomUUID()}.${ext}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from("problem_images")
-        .upload(path, imageFile);
-
-      if (uploadError) throw uploadError;
-
-      const { data: urlData } = supabase.storage
-        .from("problem_images")
-        .getPublicUrl(path);
+      const imageUrl = await uploadImage(imageFile);
+      let solUrl = null;
+      if (solutionFile) solUrl = await uploadImage(solutionFile);
 
       const { error: insertError } = await supabase.from("question_bank").insert({
         created_by: user.id,
-        problem_image_url: urlData.publicUrl,
+        problem_image_url: imageUrl,
         correct_answer: correctAnswer,
         answer_type: answerType as any,
         multiple_choice_options: answerType === "multiple_choice" ? mcOptions : null,
         difficulty_weight: difficulty[0],
         category: category as any,
         visibility: published ? "published" as any : "draft" as any,
-      });
+        solution_image_url: solUrl,
+        solution_text: solutionText.trim() || null,
+      } as any);
 
       if (insertError) throw insertError;
 
-      toast.success("Problem saved successfully!");
-      setImageFile(null);
-      setImagePreview(null);
-      setCorrectAnswer("");
-      setMcOptions(["", "", "", ""]);
-      setDifficulty([5]);
+      toast.success("Problem saved!");
+      setImageFile(null); setImagePreview(null);
+      setSolutionFile(null); setSolutionPreview(null);
+      setCorrectAnswer(""); setSolutionText("");
+      setMcOptions(["", "", "", ""]); setDifficulty([5]);
       onSaved();
     } catch (err: any) {
       toast.error("Error: " + err.message);
@@ -95,107 +100,83 @@ const ProblemForge = ({ onSaved }: ProblemForgeProps) => {
 
   return (
     <div className="space-y-6">
-      {/* Image Upload */}
       <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle className="font-display text-lg">Problem Image</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle className="font-display text-lg">Problem Image</CardTitle></CardHeader>
         <CardContent>
           {imagePreview ? (
             <div className="relative">
               <img src={imagePreview} alt="Preview" className="max-h-64 rounded-lg mx-auto" />
-              <Button
-                variant="destructive"
-                size="icon"
-                className="absolute top-2 right-2"
-                onClick={() => { setImageFile(null); setImagePreview(null); }}
-              >
-                <X className="h-4 w-4" />
-              </Button>
+              <Button variant="destructive" size="icon" className="absolute top-2 right-2" onClick={() => { setImageFile(null); setImagePreview(null); }}><X className="h-4 w-4" /></Button>
             </div>
           ) : (
-            <div
-              className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors cursor-pointer ${
-                dragActive ? "border-gold bg-gold/5" : "border-border hover:border-gold/50"
-              }`}
-              onDragOver={e => { e.preventDefault(); setDragActive(true); }}
-              onDragLeave={() => setDragActive(false)}
-              onDrop={handleDrop}
-              onClick={() => document.getElementById("file-input")?.click()}
-            >
+            <div className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors cursor-pointer ${dragActive ? "border-gold bg-gold/5" : "border-border hover:border-gold/50"}`}
+              onDragOver={e => { e.preventDefault(); setDragActive(true); }} onDragLeave={() => setDragActive(false)} onDrop={handleDrop}
+              onClick={() => document.getElementById("file-input")?.click()}>
               <Upload className="h-8 w-8 mx-auto mb-3 text-muted-foreground" />
               <p className="text-muted-foreground">Drag & drop an image or click to browse</p>
-              <input
-                id="file-input"
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={e => e.target.files?.[0] && handleFile(e.target.files[0])}
-              />
+              <input id="file-input" type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && handleFile(e.target.files[0], "problem")} />
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Answer Configuration */}
+      {/* FEAT-02: Solution Image Upload */}
       <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle className="font-display text-lg">Answer Configuration</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle className="font-display text-lg">Solution (Optional)</CardTitle></CardHeader>
+        <CardContent className="space-y-4">
+          {solutionPreview ? (
+            <div className="relative">
+              <img src={solutionPreview} alt="Solution Preview" className="max-h-48 rounded-lg mx-auto" />
+              <Button variant="destructive" size="icon" className="absolute top-2 right-2" onClick={() => { setSolutionFile(null); setSolutionPreview(null); }}><X className="h-4 w-4" /></Button>
+            </div>
+          ) : (
+            <div className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer border-border hover:border-gold/50"
+              onClick={() => document.getElementById("solution-file-input")?.click()}>
+              <Upload className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">Upload solution image (optional)</p>
+              <input id="solution-file-input" type="file" accept="image/*" className="hidden" onChange={e => e.target.files?.[0] && handleFile(e.target.files[0], "solution")} />
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label>Solution Explanation (optional)</Label>
+            <Textarea value={solutionText} onChange={e => setSolutionText(e.target.value)} placeholder="Explain the solution..." className="bg-secondary border-border min-h-[80px]" />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="bg-card border-border">
+        <CardHeader><CardTitle className="font-display text-lg">Answer Configuration</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label>Answer Type</Label>
             <Select value={answerType} onValueChange={(v: "text" | "multiple_choice") => setAnswerType(v)}>
-              <SelectTrigger className="bg-secondary border-border">
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="text">Text / Numeric Input</SelectItem>
                 <SelectItem value="multiple_choice">Multiple Choice (A/B/C/D)</SelectItem>
               </SelectContent>
             </Select>
           </div>
-
           <div className="space-y-2">
             <Label>Correct Answer</Label>
-            <Input
-              value={correctAnswer}
-              onChange={e => setCorrectAnswer(e.target.value)}
-              placeholder="Enter the correct answer..."
-              className="bg-secondary border-border"
-            />
+            <Input value={correctAnswer} onChange={e => setCorrectAnswer(e.target.value)} placeholder="Enter the correct answer..." className="bg-secondary border-border" />
           </div>
-
           {answerType === "multiple_choice" && (
             <div className="space-y-2">
               <Label>Options (A / B / C / D)</Label>
               {mcOptions.map((opt, i) => (
-                <Input
-                  key={i}
-                  value={opt}
-                  onChange={e => {
-                    const updated = [...mcOptions];
-                    updated[i] = e.target.value;
-                    setMcOptions(updated);
-                  }}
-                  placeholder={`Option ${String.fromCharCode(65 + i)}`}
-                  className="bg-secondary border-border"
-                />
+                <Input key={i} value={opt} onChange={e => { const u = [...mcOptions]; u[i] = e.target.value; setMcOptions(u); }} placeholder={`Option ${String.fromCharCode(65 + i)}`} className="bg-secondary border-border" />
               ))}
             </div>
           )}
-
           <div className="space-y-2">
             <Label>Difficulty Weight: {difficulty[0]}/10</Label>
             <Slider value={difficulty} onValueChange={setDifficulty} min={1} max={10} step={1} />
           </div>
-
           <div className="space-y-2">
             <Label>Category</Label>
             <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger className="bg-secondary border-border">
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="number_theory">Number Theory</SelectItem>
                 <SelectItem value="algebra">Algebra</SelectItem>
@@ -204,17 +185,11 @@ const ProblemForge = ({ onSaved }: ProblemForgeProps) => {
               </SelectContent>
             </Select>
           </div>
-
           <div className="flex items-center gap-2">
             <Switch checked={published} onCheckedChange={setPublished} />
             <Label>{published ? "Published" : "Draft"}</Label>
           </div>
-
-          <Button
-            onClick={handleSave}
-            disabled={uploading || !imageFile || !correctAnswer}
-            className="w-full bg-gold text-gold-foreground hover:bg-gold/90"
-          >
+          <Button onClick={handleSave} disabled={uploading || !imageFile || !correctAnswer} className="w-full bg-gold text-gold-foreground hover:bg-gold/90">
             {uploading ? "Saving..." : "Save Problem"}
           </Button>
         </CardContent>
