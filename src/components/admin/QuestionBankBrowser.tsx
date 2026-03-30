@@ -3,15 +3,24 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
-import { Trash2, Eye, EyeOff, Library } from "lucide-react";
+import { Trash2, Eye, EyeOff, Library, Pencil } from "lucide-react";
 import { format } from "date-fns";
 
 const QuestionBankBrowser = () => {
   const [questions, setQuestions] = useState<any[]>([]);
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [visibilityFilter, setVisibilityFilter] = useState("all");
+  const [editQ, setEditQ] = useState<any>(null);
+  const [editAnswer, setEditAnswer] = useState("");
+  const [editDifficulty, setEditDifficulty] = useState([5]);
+  const [editCategory, setEditCategory] = useState("algebra");
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   const fetchQuestions = async () => {
     let query = supabase.from("question_bank").select("*").order("created_at", { ascending: false });
@@ -31,8 +40,29 @@ const QuestionBankBrowser = () => {
   };
 
   const deleteQuestion = async (id: string) => {
+    if (!window.confirm("Delete this question permanently?")) return;
     await supabase.from("question_bank").delete().eq("id", id);
     toast.success("Question deleted.");
+    fetchQuestions();
+  };
+
+  const openEdit = (q: any) => {
+    setEditQ(q);
+    setEditAnswer(q.correct_answer);
+    setEditDifficulty([q.difficulty_weight]);
+    setEditCategory(q.category);
+    setEditDialogOpen(true);
+  };
+
+  const saveEdit = async () => {
+    if (!editQ) return;
+    await supabase.from("question_bank").update({
+      correct_answer: editAnswer,
+      difficulty_weight: editDifficulty[0],
+      category: editCategory as any,
+    }).eq("id", editQ.id);
+    toast.success("Question updated.");
+    setEditDialogOpen(false);
     fetchQuestions();
   };
 
@@ -45,12 +75,9 @@ const QuestionBankBrowser = () => {
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
       <div className="flex gap-3 flex-wrap">
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-40 bg-secondary border-border">
-            <SelectValue placeholder="Category" />
-          </SelectTrigger>
+          <SelectTrigger className="w-40 bg-secondary border-border"><SelectValue placeholder="Category" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Categories</SelectItem>
             <SelectItem value="number_theory">Number Theory</SelectItem>
@@ -60,9 +87,7 @@ const QuestionBankBrowser = () => {
           </SelectContent>
         </Select>
         <Select value={visibilityFilter} onValueChange={setVisibilityFilter}>
-          <SelectTrigger className="w-40 bg-secondary border-border">
-            <SelectValue placeholder="Visibility" />
-          </SelectTrigger>
+          <SelectTrigger className="w-40 bg-secondary border-border"><SelectValue placeholder="Visibility" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All</SelectItem>
             <SelectItem value="published">Published</SelectItem>
@@ -72,7 +97,6 @@ const QuestionBankBrowser = () => {
         <Badge variant="outline" className="self-center">{questions.length} questions</Badge>
       </div>
 
-      {/* Questions Grid */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {questions.map(q => (
           <Card key={q.id} className="bg-card border-border overflow-hidden">
@@ -83,12 +107,8 @@ const QuestionBankBrowser = () => {
             )}
             <CardContent className="pt-4 space-y-2">
               <div className="flex items-center justify-between">
-                <Badge variant="outline" className={categoryColors[q.category] || ""}>
-                  {q.category.replace("_", " ")}
-                </Badge>
-                <Badge className={q.visibility === "published" ? "bg-green-500/20 text-green-400" : "bg-muted text-muted-foreground"}>
-                  {q.visibility}
-                </Badge>
+                <Badge variant="outline" className={categoryColors[q.category] || ""}>{q.category.replace("_", " ")}</Badge>
+                <Badge className={q.visibility === "published" ? "bg-green-500/20 text-green-400" : "bg-muted text-muted-foreground"}>{q.visibility}</Badge>
               </div>
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>Difficulty: {q.difficulty_weight}/10</span>
@@ -101,6 +121,9 @@ const QuestionBankBrowser = () => {
                   {q.visibility === "published" ? <EyeOff className="h-4 w-4 mr-1" /> : <Eye className="h-4 w-4 mr-1" />}
                   {q.visibility === "published" ? "Unpublish" : "Publish"}
                 </Button>
+                <Button variant="ghost" size="sm" onClick={() => openEdit(q)}>
+                  <Pencil className="h-4 w-4 mr-1" /> Edit
+                </Button>
                 <Button variant="ghost" size="sm" onClick={() => deleteQuestion(q.id)} className="text-destructive">
                   <Trash2 className="h-4 w-4 mr-1" /> Delete
                 </Button>
@@ -109,6 +132,7 @@ const QuestionBankBrowser = () => {
           </Card>
         ))}
       </div>
+
       {questions.length === 0 && (
         <Card className="bg-card border-border">
           <CardContent className="py-12 text-center">
@@ -117,6 +141,35 @@ const QuestionBankBrowser = () => {
           </CardContent>
         </Card>
       )}
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader><DialogTitle>Edit Question</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Correct Answer</Label>
+              <Input value={editAnswer} onChange={e => setEditAnswer(e.target.value)} className="bg-secondary border-border" />
+            </div>
+            <div className="space-y-2">
+              <Label>Difficulty: {editDifficulty[0]}/10</Label>
+              <Slider value={editDifficulty} onValueChange={setEditDifficulty} min={1} max={10} step={1} />
+            </div>
+            <div className="space-y-2">
+              <Label>Category</Label>
+              <Select value={editCategory} onValueChange={setEditCategory}>
+                <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="number_theory">Number Theory</SelectItem>
+                  <SelectItem value="algebra">Algebra</SelectItem>
+                  <SelectItem value="combinatorics">Combinatorics</SelectItem>
+                  <SelectItem value="geometry">Geometry</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button onClick={saveEdit} className="w-full bg-gold text-gold-foreground hover:bg-gold/90">Save Changes</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

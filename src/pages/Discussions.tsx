@@ -6,16 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { MessageSquare, Plus, Pin, Lock, Send, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 
-
 const Discussions = () => {
   const { user, isAdminOrMod } = useAuth();
   const [discussions, setDiscussions] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<Record<string, string>>({});
+  const [replyCounts, setReplyCounts] = useState<Record<string, number>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
   const [replies, setReplies] = useState<Record<string, any[]>>({});
   const [replyTexts, setReplyTexts] = useState<Record<string, string>>({});
@@ -23,6 +24,7 @@ const Discussions = () => {
   const [newBody, setNewBody] = useState("");
   const [creating, setCreating] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const fetchDiscussions = async () => {
     const { data } = await supabase
@@ -31,6 +33,7 @@ const Discussions = () => {
       .order("pinned", { ascending: false })
       .order("updated_at", { ascending: false });
     if (data) setDiscussions(data);
+    setLoading(false);
   };
 
   const fetchProfiles = async () => {
@@ -42,14 +45,26 @@ const Discussions = () => {
     }
   };
 
+  // DECO-06 FIX: Fetch reply counts
+  const fetchReplyCounts = async () => {
+    const { data } = await supabase.rpc("get_discussion_reply_counts");
+    if (data) {
+      const counts: Record<string, number> = {};
+      (data as any[]).forEach((r: any) => { counts[r.discussion_id] = Number(r.reply_count); });
+      setReplyCounts(counts);
+    }
+  };
+
   useEffect(() => {
     fetchDiscussions();
     fetchProfiles();
+    fetchReplyCounts();
 
     const channel = supabase
       .channel("discussions-public")
       .on("postgres_changes", { event: "*", schema: "public", table: "discussions" }, () => fetchDiscussions())
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "discussion_replies" }, () => {
+        fetchReplyCounts();
         if (expanded) fetchReplies(expanded);
       })
       .subscribe();
@@ -66,28 +81,18 @@ const Discussions = () => {
   };
 
   const toggleExpand = (id: string) => {
-    if (expanded === id) {
-      setExpanded(null);
-    } else {
-      setExpanded(id);
-      fetchReplies(id);
-    }
+    if (expanded === id) { setExpanded(null); }
+    else { setExpanded(id); fetchReplies(id); }
   };
 
   const createDiscussion = async () => {
     if (!newTitle.trim() || !newBody.trim() || !user) return;
     setCreating(true);
     const { error } = await supabase.from("discussions").insert({
-      title: newTitle.trim(),
-      body: newBody.trim(),
-      user_id: user.id,
+      title: newTitle.trim(), body: newBody.trim(), user_id: user.id,
     });
     if (error) toast.error(error.message);
-    else {
-      toast.success("Discussion created!");
-      setNewTitle(""); setNewBody(""); setDialogOpen(false);
-      fetchDiscussions();
-    }
+    else { toast.success("Discussion created!"); setNewTitle(""); setNewBody(""); setDialogOpen(false); fetchDiscussions(); }
     setCreating(false);
   };
 
@@ -95,15 +100,12 @@ const Discussions = () => {
     const text = replyTexts[discussionId] || "";
     if (!text.trim() || !user) return;
     const { error } = await supabase.from("discussion_replies").insert({
-      discussion_id: discussionId,
-      body: text.trim(),
-      user_id: user.id,
+      discussion_id: discussionId, body: text.trim(), user_id: user.id,
     });
     if (error) toast.error(error.message);
     else {
       setReplyTexts(prev => ({ ...prev, [discussionId]: "" }));
       fetchReplies(discussionId);
-      // Update discussion's updated_at
       await supabase.from("discussions").update({ updated_at: new Date().toISOString() }).eq("id", discussionId);
     }
   };
@@ -129,6 +131,15 @@ const Discussions = () => {
     fetchDiscussions();
   };
 
+  if (loading) {
+    return (
+      <div className="container py-8 space-y-6">
+        <Skeleton className="h-10 w-48" />
+        <div className="space-y-3">{Array.from({length: 4}).map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>
+      </div>
+    );
+  }
+
   return (
     <div className="container py-8 space-y-6">
       <div className="flex items-center justify-between">
@@ -139,27 +150,13 @@ const Discussions = () => {
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-gold text-gold-foreground hover:bg-gold/90">
-              <Plus className="h-4 w-4 mr-1" /> New Discussion
-            </Button>
+            <Button className="bg-gold text-gold-foreground hover:bg-gold/90"><Plus className="h-4 w-4 mr-1" /> New Discussion</Button>
           </DialogTrigger>
           <DialogContent className="bg-card border-border">
-            <DialogHeader>
-              <DialogTitle className="font-display">Start a Discussion</DialogTitle>
-            </DialogHeader>
+            <DialogHeader><DialogTitle className="font-display">Start a Discussion</DialogTitle></DialogHeader>
             <div className="space-y-4">
-              <Input
-                placeholder="Title"
-                value={newTitle}
-                onChange={e => setNewTitle(e.target.value)}
-                className="bg-secondary border-border"
-              />
-              <Textarea
-                placeholder="What's on your mind?"
-                value={newBody}
-                onChange={e => setNewBody(e.target.value)}
-                className="bg-secondary border-border min-h-[120px]"
-              />
+              <Input placeholder="Title" value={newTitle} onChange={e => setNewTitle(e.target.value)} className="bg-secondary border-border" />
+              <Textarea placeholder="What's on your mind?" value={newBody} onChange={e => setNewBody(e.target.value)} className="bg-secondary border-border min-h-[120px]" />
               <Button onClick={createDiscussion} disabled={creating || !newTitle.trim() || !newBody.trim()} className="w-full bg-gold text-gold-foreground hover:bg-gold/90">
                 {creating ? "Posting..." : "Post Discussion"}
               </Button>
@@ -169,81 +166,65 @@ const Discussions = () => {
       </div>
 
       <div className="space-y-3">
-        {discussions.map(d => {
-          const replyCount = replies[d.id]?.length;
-          return (
-            <Card key={d.id} className={`bg-card border-border ${expanded === d.id ? "border-gold/20" : ""}`}>
-              <CardHeader className="pb-2 cursor-pointer" onClick={() => toggleExpand(d.id)}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 min-w-0">
-                    {d.pinned && <Pin className="h-4 w-4 text-gold shrink-0" />}
-                    {d.locked && <Lock className="h-4 w-4 text-muted-foreground shrink-0" />}
-                    <CardTitle className="font-display text-base truncate">{d.title}</CardTitle>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs text-muted-foreground">
-                      {profiles[d.user_id] || "Anonymous"} • {formatDistanceToNow(new Date(d.created_at), { addSuffix: true })}
-                    </span>
-                    {isAdminOrMod && (
-                      <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => togglePin(d.id, d.pinned)}>
-                          <Pin className={`h-3 w-3 ${d.pinned ? "text-gold" : "text-muted-foreground"}`} />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => toggleLock(d.id, d.locked)}>
-                          <Lock className={`h-3 w-3 ${d.locked ? "text-destructive" : "text-muted-foreground"}`} />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => deleteDiscussion(d.id)}>
-                          <Trash2 className="h-3 w-3 text-destructive" />
-                        </Button>
-                      </div>
-                    )}
-                    {expanded === d.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                  </div>
+        {discussions.map(d => (
+          <Card key={d.id} className={`bg-card border-border ${expanded === d.id ? "border-gold/20" : ""}`}>
+            <CardHeader className="pb-2 cursor-pointer" onClick={() => toggleExpand(d.id)}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  {d.pinned && <Pin className="h-4 w-4 text-gold shrink-0" />}
+                  {d.locked && <Lock className="h-4 w-4 text-muted-foreground shrink-0" />}
+                  <CardTitle className="font-display text-base truncate">{d.title}</CardTitle>
+                  {replyCounts[d.id] !== undefined && (
+                    <Badge variant="outline" className="text-xs shrink-0">{replyCounts[d.id]} replies</Badge>
+                  )}
                 </div>
-              </CardHeader>
-
-              {expanded === d.id && (
-                <CardContent className="space-y-4">
-                  <p className="text-sm text-foreground whitespace-pre-wrap">{d.body}</p>
-
-                  {/* Replies */}
-                  <div className="space-y-2 pl-4 border-l-2 border-border">
-                    {(replies[d.id] || []).map((r: any) => (
-                      <div key={r.id} className="p-3 rounded bg-secondary/30">
-                        <p className="text-xs text-muted-foreground mb-1">
-                          {profiles[r.user_id] || "Anonymous"} • {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
-                        </p>
-                        <p className="text-sm text-foreground">{r.body}</p>
-                      </div>
-                    ))}
-                    {(replies[d.id] || []).length === 0 && (
-                      <p className="text-xs text-muted-foreground py-2">No replies yet. Be the first!</p>
-                    )}
-                  </div>
-
-                  {!d.locked && (
-                    <div className="flex gap-2">
-                      <Input
-                        placeholder="Write a reply..."
-                        value={replyTexts[d.id] || ""}
-                        onChange={e => setReplyTexts(prev => ({ ...prev, [d.id]: e.target.value }))}
-                        onKeyDown={e => e.key === "Enter" && postReply(d.id)}
-                        className="bg-secondary border-border"
-                      />
-                      <Button onClick={() => postReply(d.id)} size="icon" className="bg-gold text-gold-foreground hover:bg-gold/90 shrink-0">
-                        <Send className="h-4 w-4" />
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs text-muted-foreground">
+                    {profiles[d.user_id] || "Anonymous"} • {formatDistanceToNow(new Date(d.created_at), { addSuffix: true })}
+                  </span>
+                  {isAdminOrMod && (
+                    <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => togglePin(d.id, d.pinned)}>
+                        <Pin className={`h-3 w-3 ${d.pinned ? "text-gold" : "text-muted-foreground"}`} />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => toggleLock(d.id, d.locked)}>
+                        <Lock className={`h-3 w-3 ${d.locked ? "text-destructive" : "text-muted-foreground"}`} />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => deleteDiscussion(d.id)}>
+                        <Trash2 className="h-3 w-3 text-destructive" />
                       </Button>
                     </div>
                   )}
-                  {d.locked && (
-                    <p className="text-center text-xs text-muted-foreground py-2">🔒 This discussion is locked.</p>
-                  )}
-                </CardContent>
-              )}
-            </Card>
-          );
-        })}
+                  {expanded === d.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </div>
+              </div>
+            </CardHeader>
 
+            {expanded === d.id && (
+              <CardContent className="space-y-4">
+                <p className="text-sm text-foreground whitespace-pre-wrap">{d.body}</p>
+                <div className="space-y-2 pl-4 border-l-2 border-border">
+                  {(replies[d.id] || []).map((r: any) => (
+                    <div key={r.id} className="p-3 rounded bg-secondary/30">
+                      <p className="text-xs text-muted-foreground mb-1">
+                        {profiles[r.user_id] || "Anonymous"} • {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
+                      </p>
+                      <p className="text-sm text-foreground">{r.body}</p>
+                    </div>
+                  ))}
+                  {(replies[d.id] || []).length === 0 && <p className="text-xs text-muted-foreground py-2">No replies yet.</p>}
+                </div>
+                {!d.locked && (
+                  <div className="flex gap-2">
+                    <Input placeholder="Write a reply..." value={replyTexts[d.id] || ""} onChange={e => setReplyTexts(prev => ({ ...prev, [d.id]: e.target.value }))} onKeyDown={e => e.key === "Enter" && postReply(d.id)} className="bg-secondary border-border" />
+                    <Button onClick={() => postReply(d.id)} size="icon" className="bg-gold text-gold-foreground hover:bg-gold/90 shrink-0"><Send className="h-4 w-4" /></Button>
+                  </div>
+                )}
+                {d.locked && <p className="text-center text-xs text-muted-foreground py-2">🔒 This discussion is locked.</p>}
+              </CardContent>
+            )}
+          </Card>
+        ))}
         {discussions.length === 0 && (
           <Card className="bg-card border-border">
             <CardContent className="py-12 text-center">

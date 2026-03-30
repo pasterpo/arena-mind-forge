@@ -27,7 +27,6 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
   const [timeLimit, setTimeLimit] = useState("60");
   const [telegramLink, setTelegramLink] = useState("");
   const [tournamentType, setTournamentType] = useState<string>(fixedType || "tournament");
-
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
   const [categoryFilter, setCategoryFilter] = useState("");
   const [creating, setCreating] = useState(false);
@@ -41,11 +40,15 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
     const { data: q } = await supabase.from("question_bank").select("*").eq("visibility", "published").order("created_at", { ascending: false });
     if (q) setQuestions(q);
 
-    const { data: parts } = await supabase.from("tournament_participants").select("tournament_id");
-    if (parts) {
-      const counts: Record<string, number> = {};
-      parts.forEach((p: any) => { counts[p.tournament_id] = (counts[p.tournament_id] || 0) + 1; });
-      setParticipantCounts(counts);
+    // PERF-01 FIX: Only fetch participants for relevant tournaments
+    if (t && t.length > 0) {
+      const ids = t.map(tour => tour.id);
+      const { data: parts } = await supabase.from("tournament_participants").select("tournament_id").in("tournament_id", ids);
+      if (parts) {
+        const counts: Record<string, number> = {};
+        parts.forEach((p: any) => { counts[p.tournament_id] = (counts[p.tournament_id] || 0) + 1; });
+        setParticipantCounts(counts);
+      }
     }
   };
 
@@ -59,8 +62,7 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
     setCreating(true);
     try {
       const insertData: any = {
-        title,
-        description,
+        title, description,
         start_timestamp: new Date(startTime).toISOString(),
         end_timestamp: new Date(endTime).toISOString(),
         time_limit_minutes: parseInt(timeLimit),
@@ -74,12 +76,9 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
 
       if (selectedQuestions.size > 0) {
         const tqRows = Array.from(selectedQuestions).map((qId, i) => ({
-          tournament_id: t.id,
-          question_id: qId,
-          question_order: i + 1,
+          tournament_id: t.id, question_id: qId, question_order: i + 1,
         }));
-        const { error: tqError } = await supabase.from("tournament_questions").insert(tqRows);
-        if (tqError) throw tqError;
+        await supabase.from("tournament_questions").insert(tqRows);
       }
 
       toast.success("Created successfully!");
@@ -94,6 +93,7 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
   };
 
   const updateStatus = async (id: string, status: string) => {
+    if (!window.confirm(`Mark this as ${status}?`)) return;
     const { error } = await supabase.from("tournaments").update({ status: status as any }).eq("id", id);
     if (error) {
       toast.error("Error: " + error.message);
@@ -109,6 +109,7 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
   };
 
   const deleteTournament = async (id: string) => {
+    if (!window.confirm("Delete this competition permanently?")) return;
     await supabase.from("tournament_questions").delete().eq("tournament_id", id);
     await supabase.from("tournaments").delete().eq("id", id);
     toast.success("Deleted.");
@@ -124,13 +125,11 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
   };
 
   const filteredQuestions = categoryFilter ? questions.filter(q => q.category === categoryFilter) : questions;
-
   const statusColor: Record<string, string> = {
     upcoming: "bg-blue-500/20 text-blue-400 border-blue-500/30",
     active: "bg-gold/20 text-gold border-gold/30",
     completed: "bg-muted text-muted-foreground border-border",
   };
-
   const typeLabel: Record<string, string> = { tournament: "Tournament", olympiad: "Olympiad", jee: "JEE Mock" };
 
   return (
@@ -153,9 +152,9 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
                 <Select value={tournamentType} onValueChange={setTournamentType}>
                   <SelectTrigger className="bg-secondary border-border"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="tournament">Tournament (Continuous)</SelectItem>
-                    <SelectItem value="olympiad">Olympiad (Scheduled)</SelectItem>
-                    <SelectItem value="jee">JEE Mock (Scheduled)</SelectItem>
+                    <SelectItem value="tournament">Tournament</SelectItem>
+                    <SelectItem value="olympiad">Olympiad</SelectItem>
+                    <SelectItem value="jee">JEE Mock</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -173,13 +172,14 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
             <Label>Telegram Link (optional — shown publicly)</Label>
             <Input value={telegramLink} onChange={e => setTelegramLink(e.target.value)} placeholder="https://t.me/YourChannel" className="bg-secondary border-border" />
           </div>
+          {/* UX-05 FIX: Label says local time */}
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <Label>Start Time (UTC)</Label>
+              <Label>Start Time (your local time)</Label>
               <Input type="datetime-local" value={startTime} onChange={e => setStartTime(e.target.value)} className="bg-secondary border-border" />
             </div>
             <div className="space-y-2">
-              <Label>End Time (UTC)</Label>
+              <Label>End Time (your local time)</Label>
               <Input type="datetime-local" value={endTime} onChange={e => setEndTime(e.target.value)} className="bg-secondary border-border" />
             </div>
           </div>
@@ -217,7 +217,7 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
 
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="font-display text-lg">All Competitions</CardTitle>
+          <CardTitle className="font-display text-lg">All {fixedType ? typeLabel[fixedType] + "s" : "Competitions"}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
