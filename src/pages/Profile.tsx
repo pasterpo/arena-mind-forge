@@ -88,8 +88,8 @@ const Profile = () => {
           .eq("category", cat as any);
         const catQIds = new Set((catQuestions || []).map((q: any) => q.id));
         const filtered = (catSubs || []).filter((s: any) => catQIds.has(s.question_id));
-        if (catSubs && catSubs.length > 0) {
-          catAcc[cat] = { correct: catSubs.filter((s: any) => s.is_correct).length, total: catSubs.length };
+        if (filtered.length > 0) {
+          catAcc[cat] = { correct: filtered.filter((s: any) => s.is_correct).length, total: filtered.length };
         }
       }
       setCategoryAccuracy(catAcc);
