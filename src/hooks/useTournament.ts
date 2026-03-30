@@ -221,7 +221,7 @@ export const useTournament = (id: string | undefined, user: User | null) => {
       }
     }
     // BUG-03 FALLBACK: Try auto-completing tournaments
-    await supabase.rpc("auto_complete_tournaments").catch(() => {});
+    try { await supabase.rpc("auto_complete_tournaments"); } catch (_) {}
     setLockedOut(true);
     setTournamentState("locked_out");
     toast.info("Tournament ended. All answers submitted.");
