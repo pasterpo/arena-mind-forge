@@ -8,8 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import { toast } from "sonner";
-import { Plus, ExternalLink, Play, CheckCircle2, Trash2, Users } from "lucide-react";
+import { Plus, ExternalLink, Play, CheckCircle2, Trash2, Users, Pencil, ChevronDown, ChevronUp, Zap } from "lucide-react";
 
 interface TournamentPanelProps {
   fixedType?: "tournament" | "olympiad" | "jee";
@@ -30,6 +32,17 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
   const [selectedQuestions, setSelectedQuestions] = useState<Set<string>>(new Set());
   const [categoryFilter, setCategoryFilter] = useState("");
   const [creating, setCreating] = useState(false);
+  const [expandedQuestions, setExpandedQuestions] = useState<string | null>(null);
+  const [tournamentQuestions, setTournamentQuestions] = useState<any[]>([]);
+  const [editTournament, setEditTournament] = useState<any>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editTelegram, setEditTelegram] = useState("");
+  const [editTimeLimit, setEditTimeLimit] = useState("60");
+  const [editStart, setEditStart] = useState("");
+  const [editEnd, setEditEnd] = useState("");
+  const [confirmAction, setConfirmAction] = useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
 
   const fetchData = async () => {
     let query = supabase.from("tournaments").select("*").order("created_at", { ascending: false });
@@ -40,7 +53,6 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
     const { data: q } = await supabase.from("question_bank").select("*").eq("visibility", "published").order("created_at", { ascending: false });
     if (q) setQuestions(q);
 
-    // PERF-01 FIX: Only fetch participants for relevant tournaments
     if (t && t.length > 0) {
       const ids = t.map(tour => tour.id);
       const { data: parts } = await supabase.from("tournament_participants").select("tournament_id").in("tournament_id", ids);
@@ -93,27 +105,43 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
   };
 
   const updateStatus = async (id: string, status: string) => {
-    if (!window.confirm(`Mark this as ${status}?`)) return;
-    const { error } = await supabase.from("tournaments").update({ status: status as any }).eq("id", id);
-    if (error) {
-      toast.error("Error: " + error.message);
-    } else {
-      toast.success(`Marked as ${status}.`);
-      if (status === "completed") {
-        const { error: eloErr } = await supabase.rpc("calculate_elo_changes", { p_tournament_id: id });
-        if (eloErr) toast.error("Elo error: " + eloErr.message);
-        else toast.success("Elo ratings updated!");
-      }
-      fetchData();
-    }
+    setConfirmAction({
+      title: `Mark as ${status}`,
+      description: `Are you sure you want to mark this competition as ${status}?`,
+      onConfirm: async () => {
+        const { error } = await supabase.from("tournaments").update({ status: status as any }).eq("id", id);
+        if (error) {
+          toast.error("Error: " + error.message);
+        } else {
+          if (status === "completed") {
+            const { error: eloErr } = await supabase.rpc("calculate_elo_changes", { p_tournament_id: id });
+            if (eloErr) toast.error("Elo error: " + eloErr.message);
+            else {
+              await supabase.rpc("update_global_ranks");
+              toast.success("Tournament completed. Elo ratings and global ranks updated.");
+            }
+          } else {
+            toast.success(`Marked as ${status}.`);
+          }
+          fetchData();
+        }
+        setConfirmAction(null);
+      },
+    });
   };
 
   const deleteTournament = async (id: string) => {
-    if (!window.confirm("Delete this competition permanently?")) return;
-    await supabase.from("tournament_questions").delete().eq("tournament_id", id);
-    await supabase.from("tournaments").delete().eq("id", id);
-    toast.success("Deleted.");
-    fetchData();
+    setConfirmAction({
+      title: "Delete Competition",
+      description: "Delete this competition permanently? This will also remove all associated questions.",
+      onConfirm: async () => {
+        await supabase.from("tournament_questions").delete().eq("tournament_id", id);
+        await supabase.from("tournaments").delete().eq("id", id);
+        toast.success("Deleted.");
+        fetchData();
+        setConfirmAction(null);
+      },
+    });
   };
 
   const toggleQuestion = (qId: string) => {
@@ -122,6 +150,51 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
       next.has(qId) ? next.delete(qId) : next.add(qId);
       return next;
     });
+  };
+
+  const viewQuestions = async (tournamentId: string) => {
+    if (expandedQuestions === tournamentId) {
+      setExpandedQuestions(null);
+      return;
+    }
+    const { data } = await supabase.from("tournament_questions").select("*, question_bank(*)").eq("tournament_id", tournamentId).order("question_order");
+    setTournamentQuestions(data || []);
+    setExpandedQuestions(tournamentId);
+  };
+
+  const removeQuestion = async (tqId: string, tournamentId: string) => {
+    await supabase.from("tournament_questions").delete().eq("id", tqId);
+    toast.success("Question removed.");
+    viewQuestions(tournamentId);
+  };
+
+  const openEdit = (t: any) => {
+    setEditTournament(t);
+    setEditTitle(t.title);
+    setEditDescription(t.description || "");
+    setEditTelegram(t.telegram_link || "");
+    setEditTimeLimit(String(t.time_limit_minutes));
+    setEditStart(new Date(t.start_timestamp).toISOString().slice(0, 16));
+    setEditEnd(new Date(t.end_timestamp).toISOString().slice(0, 16));
+    setEditDialogOpen(true);
+  };
+
+  const saveEdit = async () => {
+    if (!editTournament) return;
+    const updates: any = {
+      title: editTitle,
+      description: editDescription,
+      telegram_link: editTelegram || null,
+      time_limit_minutes: parseInt(editTimeLimit),
+    };
+    if (editTournament.status === "upcoming") {
+      updates.start_timestamp = new Date(editStart).toISOString();
+      updates.end_timestamp = new Date(editEnd).toISOString();
+    }
+    await supabase.from("tournaments").update(updates).eq("id", editTournament.id);
+    toast.success("Competition updated.");
+    setEditDialogOpen(false);
+    fetchData();
   };
 
   const filteredQuestions = categoryFilter ? questions.filter(q => q.category === categoryFilter) : questions;
@@ -172,7 +245,6 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
             <Label>Telegram Link (optional — shown publicly)</Label>
             <Input value={telegramLink} onChange={e => setTelegramLink(e.target.value)} placeholder="https://t.me/YourChannel" className="bg-secondary border-border" />
           </div>
-          {/* UX-05 FIX: Label says local time */}
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <Label>Start Time (your local time)</Label>
@@ -217,7 +289,19 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
 
       <Card className="bg-card border-border">
         <CardHeader>
-          <CardTitle className="font-display text-lg">All {fixedType ? typeLabel[fixedType] + "s" : "Competitions"}</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="font-display text-lg">All {fixedType ? typeLabel[fixedType] + "s" : "Competitions"}</CardTitle>
+            {isAdmin && (
+              <Button variant="outline" size="sm" onClick={async () => {
+                await supabase.rpc("auto_complete_tournaments");
+                await supabase.rpc("update_global_ranks");
+                fetchData();
+                toast.success("Auto-completed all expired tournaments and updated Elo ratings.");
+              }} className="gap-1">
+                <Zap className="h-4 w-4" /> Auto-Complete Expired
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -241,6 +325,13 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
                     )}
                   </div>
                   <div className="flex items-center gap-1">
+                    <Button variant="ghost" size="sm" onClick={() => viewQuestions(t.id)} className="text-muted-foreground">
+                      {expandedQuestions === t.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                      <span className="ml-1 text-xs">Questions</span>
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(t)} title="Edit">
+                      <Pencil className="h-4 w-4 text-muted-foreground" />
+                    </Button>
                     {t.status === "upcoming" && (
                       <Button variant="ghost" size="sm" onClick={() => updateStatus(t.id, "active")} className="text-green-400 hover:text-green-300">
                         <Play className="h-4 w-4 mr-1" /> Activate
@@ -258,6 +349,22 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
                     )}
                   </div>
                 </div>
+                {expandedQuestions === t.id && (
+                  <div className="mt-2 p-3 rounded bg-secondary/20 border border-border space-y-2">
+                    <p className="text-xs text-muted-foreground font-semibold">{tournamentQuestions.length} questions assigned</p>
+                    {tournamentQuestions.map((tq: any) => (
+                      <div key={tq.id} className="flex items-center justify-between text-sm">
+                        <span className="text-foreground">
+                          #{tq.question_order} — {tq.question_bank?.category?.replace("_", " ")} — Difficulty {tq.question_bank?.difficulty_weight}/10
+                        </span>
+                        {t.status === "upcoming" && (
+                          <Button variant="ghost" size="sm" onClick={() => removeQuestion(tq.id, t.id)} className="text-destructive text-xs h-6">✕</Button>
+                        )}
+                      </div>
+                    ))}
+                    {tournamentQuestions.length === 0 && <p className="text-xs text-muted-foreground">No questions assigned yet.</p>}
+                  </div>
+                )}
               </div>
             ))}
             {tournaments.length === 0 && (
@@ -266,6 +373,53 @@ const TournamentPanel = ({ fixedType }: TournamentPanelProps = {}) => {
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="bg-card border-border">
+          <DialogHeader><DialogTitle>Edit Competition</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Title</Label>
+              <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} className="bg-secondary border-border" />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Input value={editDescription} onChange={e => setEditDescription(e.target.value)} className="bg-secondary border-border" />
+            </div>
+            <div className="space-y-2">
+              <Label>Telegram Link</Label>
+              <Input value={editTelegram} onChange={e => setEditTelegram(e.target.value)} className="bg-secondary border-border" />
+            </div>
+            <div className="space-y-2">
+              <Label>Time Limit (minutes)</Label>
+              <Input type="number" value={editTimeLimit} onChange={e => setEditTimeLimit(e.target.value)} className="bg-secondary border-border" />
+            </div>
+            {editTournament?.status === "upcoming" ? (
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Start Time</Label>
+                  <Input type="datetime-local" value={editStart} onChange={e => setEditStart(e.target.value)} className="bg-secondary border-border" />
+                </div>
+                <div className="space-y-2">
+                  <Label>End Time</Label>
+                  <Input type="datetime-local" value={editEnd} onChange={e => setEditEnd(e.target.value)} className="bg-secondary border-border" />
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Cannot edit times of active/completed competitions.</p>
+            )}
+            <Button onClick={saveEdit} className="w-full bg-gold text-gold-foreground hover:bg-gold/90">Save Changes</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={!!confirmAction}
+        onOpenChange={(open) => { if (!open) setConfirmAction(null); }}
+        title={confirmAction?.title || ""}
+        description={confirmAction?.description || ""}
+        onConfirm={confirmAction?.onConfirm || (() => {})}
+      />
     </div>
   );
 };

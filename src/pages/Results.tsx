@@ -9,6 +9,14 @@ import { TierBadge } from "@/components/TierBadge";
 import { Trophy, Medal, Clock, ArrowLeft, CheckCircle, XCircle, ExternalLink, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatIST } from "@/lib/dateUtils";
+
+const typeColor: Record<string, string> = {
+  tournament: "bg-gold/20 text-gold border-gold/30",
+  olympiad: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+  jee: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+};
+const typeLabel: Record<string, string> = { tournament: "Tournament", olympiad: "Olympiad", jee: "JEE Mock" };
 
 const Results = () => {
   const { id } = useParams<{ id: string }>();
@@ -24,6 +32,9 @@ const Results = () => {
   useEffect(() => {
     if (!id) return;
     const fetchResults = async () => {
+      // Fire-and-forget auto-complete
+      try { supabase.rpc("auto_complete_tournaments").then(() => {}); } catch (_) {}
+
       const { data: t } = await supabase.from("tournaments").select("*").eq("id", id).single();
       if (t) setTournament(t);
 
@@ -34,7 +45,6 @@ const Results = () => {
         .order("question_order");
       if (tqs) setQuestions(tqs);
 
-      // BUG-01 FIX: Use RPC to get results for ALL users
       const { data: tournamentResults } = await supabase.rpc("get_tournament_results", {
         p_tournament_id: id,
       });
@@ -49,7 +59,6 @@ const Results = () => {
         })));
       }
 
-      // Fetch own answers for solutions section
       if (user) {
         const { data: mySubs } = await supabase
           .from("submissions")
@@ -65,7 +74,6 @@ const Results = () => {
         }
       }
 
-      // BUG-02 FIX: elo_history now visible to all for completed tournaments
       const { data: eloHist } = await supabase.from("elo_history").select("*").eq("tournament_id", id);
       if (eloHist) {
         const changes: Record<string, number> = {};
@@ -106,6 +114,9 @@ const Results = () => {
           <h1 className="font-display text-3xl font-bold text-foreground">{tournament.title}</h1>
           <p className="text-sm text-muted-foreground">{tournament.description}</p>
         </div>
+        <Badge className={typeColor[tournament.tournament_type] || typeColor.tournament}>
+          {typeLabel[tournament.tournament_type] || "Tournament"}
+        </Badge>
         <Badge className={isCompleted ? "bg-muted text-muted-foreground" : "bg-gold/20 text-gold border-gold/30"}>
           {tournament.status}
         </Badge>
@@ -145,7 +156,7 @@ const Results = () => {
                 <CardContent className="pt-6 text-center space-y-2">
                   <span className="text-4xl">{medals[i]}</span>
                   <p className="font-display text-xl font-bold text-foreground">
-                    <Link to={`/profile/${r.user_id}`} className="hover:text-gold transition-colors">{r.username}</Link>
+                    <Link to={`/profile/${r.user_id}`} className="hover:text-gold transition-colors">{r.username || "Anonymous"}</Link>
                   </p>
                   <TierBadge elo={r.elo} />
                   <p className="text-2xl font-mono font-bold text-gold">{r.correct}/{r.total}</p>
@@ -193,7 +204,7 @@ const Results = () => {
                     </TableCell>
                     <TableCell className="font-medium text-foreground">
                       <Link to={`/profile/${r.user_id}`} className="hover:text-gold transition-colors">
-                        {r.username}
+                        {r.username || "Anonymous"}
                       </Link>
                       {r.user_id === user?.id && <Badge variant="outline" className="ml-1 text-xs">You</Badge>}
                     </TableCell>
@@ -274,6 +285,9 @@ const Results = () => {
                       )}
                       <Badge variant="outline">Difficulty: {tq.question_bank.difficulty_weight}/10</Badge>
                       <Badge variant="outline">{tq.question_bank.category?.replace("_", " ")}</Badge>
+                      <Badge variant="outline" className="text-xs">
+                        ✅ +{tq.question_bank.difficulty_weight * 5} | ❌ -{55 - tq.question_bank.difficulty_weight * 5}
+                      </Badge>
                     </div>
                   </div>
                 );

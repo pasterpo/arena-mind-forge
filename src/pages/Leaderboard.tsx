@@ -1,12 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TierBadge } from "@/components/TierBadge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Search, Trophy, Users, Swords, BookOpen, FlaskConical } from "lucide-react";
+import { Search, Trophy, Users, Swords, BookOpen, FlaskConical, RefreshCw } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { Link } from "react-router-dom";
 
@@ -19,47 +20,50 @@ const Leaderboard = () => {
   const [categoryData, setCategoryData] = useState<any[]>([]);
   const [categoryTab, setCategoryTab] = useState("global");
 
-  useEffect(() => {
-    const fetchGlobal = async () => {
-      setLoading(true);
-      const { data, count } = await supabase
-        .from("profiles")
-        .select("*", { count: "exact" })
-        .eq("account_status", "active")
-        .order("elo_rating", { ascending: false })
-        .limit(200);
-      if (data) setProfiles(data);
-      if (count) setTotalUsers(count);
-      setLoading(false);
-    };
-    fetchGlobal();
+  const fetchGlobal = useCallback(async () => {
+    setLoading(true);
+    const { data, count } = await supabase
+      .from("profiles")
+      .select("*", { count: "exact" })
+      .eq("account_status", "active")
+      .order("elo_rating", { ascending: false })
+      .limit(200);
+    if (data) setProfiles(data);
+    if (count) setTotalUsers(count);
+    setLoading(false);
+  }, []);
 
+  const fetchCategory = useCallback(async (cat: string) => {
+    setLoading(true);
+    const { data } = await supabase.rpc("get_category_leaderboard", {
+      p_type: cat as any,
+      p_limit: 100,
+    });
+    setCategoryData(data || []);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    fetchGlobal();
     const channel = supabase
       .channel("leaderboard-realtime")
       .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => {
-        fetchGlobal();
+        if (categoryTab === "global") fetchGlobal();
       })
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, []);
 
   useEffect(() => {
-    if (categoryTab === "global") return;
-    const fetchCategory = async () => {
-      setLoading(true);
-      const { data } = await supabase.rpc("get_category_leaderboard", {
-        p_type: categoryTab as any,
-        p_limit: 100,
-      });
-      setCategoryData(data || []);
-      setLoading(false);
-    };
-    fetchCategory();
+    if (categoryTab !== "global") fetchCategory(categoryTab);
   }, [categoryTab]);
 
-  // BUG-04 FIX: Compute rank from unfiltered list
-  const rankedProfiles = profiles.map((p, i) => ({ ...p, displayRank: p.global_rank || i + 1 }));
+  const handleRefresh = () => {
+    if (categoryTab === "global") fetchGlobal();
+    else fetchCategory(categoryTab);
+  };
+
+  const rankedProfiles = profiles.map((p, i) => ({ ...p, displayRank: p.global_rank ?? (i + 1) }));
   const filtered = rankedProfiles.filter(p =>
     !search || (p.username || "").toLowerCase().includes(search.toLowerCase())
   );
@@ -70,12 +74,15 @@ const Leaderboard = () => {
 
   return (
     <div className="container py-8 space-y-6">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <Trophy className="h-6 w-6 text-gold" />
         <h1 className="font-display text-3xl font-bold text-foreground">Global Leaderboard</h1>
         <Badge variant="outline" className="flex items-center gap-1">
           <Users className="h-3 w-3" /> {totalUsers} competitors
         </Badge>
+        <Button variant="ghost" size="sm" onClick={handleRefresh} className="ml-auto gap-1">
+          <RefreshCw className="h-4 w-4" /> Refresh
+        </Button>
       </div>
 
       <div className="relative max-w-sm">
@@ -191,7 +198,7 @@ const Leaderboard = () => {
                     {filteredCategory.length === 0 && (
                       <TableRow>
                         <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                          No data yet for this category.
+                          No completed competitions in this category yet, or no submissions recorded. Complete a tournament and Elo will appear here.
                         </TableCell>
                       </TableRow>
                     )}

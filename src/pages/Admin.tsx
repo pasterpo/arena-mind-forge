@@ -1,24 +1,30 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useModeratorPermissions } from "@/hooks/useModeratorPermissions";
-import { Navigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import ProblemForge from "@/components/admin/ProblemForge";
 import TournamentPanel from "@/components/admin/TournamentPanel";
 import UserManagement from "@/components/admin/UserManagement";
 import DiscussionPanel from "@/components/admin/DiscussionPanel";
 import QuestionBankBrowser from "@/components/admin/QuestionBankBrowser";
-import { Shield, Swords, Users, ImageIcon, MessageSquare, Library } from "lucide-react";
+import { Shield, Swords, Users, ImageIcon, MessageSquare, Library, Zap, BarChart3, Ban, Trophy, Activity, FileText } from "lucide-react";
+import { toast } from "sonner";
 
 const Admin = () => {
   const { user, isAdmin, isAdminOrMod, loading } = useAuth();
   const perms = useModeratorPermissions();
+  const navigate = useNavigate();
   const [questionCount, setQuestionCount] = useState(0);
   const [userCount, setUserCount] = useState(0);
   const [tournamentCount, setTournamentCount] = useState(0);
+  const [activeCount, setActiveCount] = useState(0);
+  const [submissionsToday, setSubmissionsToday] = useState(0);
+  const [suspendedCount, setSuspendedCount] = useState(0);
 
   const refreshStats = async () => {
     const { count: qc } = await supabase.from("question_bank").select("*", { count: "exact", head: true });
@@ -27,6 +33,13 @@ const Admin = () => {
     setUserCount(uc || 0);
     const { count: tc } = await supabase.from("tournaments").select("*", { count: "exact", head: true });
     setTournamentCount(tc || 0);
+    const { count: ac } = await supabase.from("tournaments").select("*", { count: "exact", head: true }).eq("status", "active");
+    setActiveCount(ac || 0);
+    const today = new Date().toISOString().split("T")[0];
+    const { count: sc } = await supabase.from("submissions").select("*", { count: "exact", head: true }).gte("created_at", today);
+    setSubmissionsToday(sc || 0);
+    const { count: susp } = await supabase.from("profiles").select("*", { count: "exact", head: true }).eq("account_status", "suspended");
+    setSuspendedCount(susp || 0);
   };
 
   useEffect(() => { refreshStats(); }, []);
@@ -40,6 +53,23 @@ const Admin = () => {
   const showUsers = isAdmin || perms.can_manage_users;
   const showDiscussions = perms.can_view_discussions || perms.can_moderate_discussions;
 
+  const handleAutoComplete = async () => {
+    try {
+      await supabase.rpc("auto_complete_tournaments");
+      await supabase.rpc("update_global_ranks");
+      await refreshStats();
+      toast.success("Done! Expired tournaments completed and ranks updated.");
+    } catch (err: any) {
+      toast.error("Error: " + err.message);
+    }
+  };
+
+  const handleRecalcRanks = async () => {
+    await supabase.rpc("update_global_ranks");
+    await refreshStats();
+    toast.success("Global ranks recalculated.");
+  };
+
   return (
     <div className="container py-8 space-y-6">
       <div className="flex items-center gap-3">
@@ -48,29 +78,71 @@ const Admin = () => {
         <Badge className="bg-gold/20 text-gold border-gold/30">{isAdmin ? "ADMIN" : "MODERATOR"}</Badge>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
         <Card className="bg-card border-border">
           <CardContent className="pt-6 text-center">
-            <ImageIcon className="h-8 w-8 mx-auto mb-2 text-gold" />
+            <ImageIcon className="h-6 w-6 mx-auto mb-2 text-gold" />
             <p className="text-2xl font-bold font-mono text-foreground">{questionCount}</p>
-            <p className="text-sm text-muted-foreground">Questions in Bank</p>
+            <p className="text-xs text-muted-foreground">Questions</p>
           </CardContent>
         </Card>
         <Card className="bg-card border-border">
           <CardContent className="pt-6 text-center">
-            <Users className="h-8 w-8 mx-auto mb-2 text-blue-400" />
+            <Users className="h-6 w-6 mx-auto mb-2 text-blue-400" />
             <p className="text-2xl font-bold font-mono text-foreground">{userCount}</p>
-            <p className="text-sm text-muted-foreground">Total Users</p>
+            <p className="text-xs text-muted-foreground">Users</p>
           </CardContent>
         </Card>
         <Card className="bg-card border-border">
           <CardContent className="pt-6 text-center">
-            <Swords className="h-8 w-8 mx-auto mb-2 text-amber-700" />
+            <Swords className="h-6 w-6 mx-auto mb-2 text-amber-700" />
             <p className="text-2xl font-bold font-mono text-foreground">{tournamentCount}</p>
-            <p className="text-sm text-muted-foreground">Total Competitions</p>
+            <p className="text-xs text-muted-foreground">Competitions</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card border-border">
+          <CardContent className="pt-6 text-center">
+            <Activity className="h-6 w-6 mx-auto mb-2 text-gold" />
+            <p className="text-2xl font-bold font-mono text-foreground">{activeCount}</p>
+            <p className="text-xs text-muted-foreground">Active</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card border-border">
+          <CardContent className="pt-6 text-center">
+            <FileText className="h-6 w-6 mx-auto mb-2 text-blue-400" />
+            <p className="text-2xl font-bold font-mono text-foreground">{submissionsToday}</p>
+            <p className="text-xs text-muted-foreground">Submissions Today</p>
+          </CardContent>
+        </Card>
+        <Card className="bg-card border-border">
+          <CardContent className="pt-6 text-center">
+            <Ban className="h-6 w-6 mx-auto mb-2 text-destructive" />
+            <p className="text-2xl font-bold font-mono text-foreground">{suspendedCount}</p>
+            <p className="text-xs text-muted-foreground">Suspended</p>
           </CardContent>
         </Card>
       </div>
+
+      {isAdmin && (
+        <Card className="bg-card border-border">
+          <CardHeader className="pb-3">
+            <CardTitle className="font-display text-lg flex items-center gap-2"><Zap className="h-5 w-5 text-gold" /> Quick Actions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={handleAutoComplete} className="gap-1">
+                <Zap className="h-4 w-4" /> Auto-Complete Expired
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleRecalcRanks} className="gap-1">
+                <BarChart3 className="h-4 w-4" /> Recalculate Ranks
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => navigate("/leaderboard")} className="gap-1">
+                <Trophy className="h-4 w-4" /> View Leaderboard
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs defaultValue={showForge ? "forge" : showTournaments ? "tournaments" : "discussions"} className="space-y-4">
         <TabsList className="bg-secondary border border-border flex-wrap h-auto gap-1 p-1">

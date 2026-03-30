@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useTournament } from "@/hooks/useTournament";
@@ -7,23 +7,24 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { AlertTriangle, CheckCircle, ChevronLeft, ChevronRight, Clock, Shield, Users, ArrowLeft } from "lucide-react";
+import { AlertTriangle, CheckCircle, ChevronLeft, ChevronRight, Clock, Shield, Users, ArrowLeft, Swords, BookOpen, FlaskConical } from "lucide-react";
+import { formatIST } from "@/lib/dateUtils";
 
-// BUG-07 FIX
-const formatIST = (dateStr: string) => {
-  return new Date(dateStr).toLocaleString("en-IN", {
-    timeZone: "Asia/Kolkata",
-    month: "short", day: "numeric", year: "numeric",
-    hour: "2-digit", minute: "2-digit", hour12: false,
-  }) + " IST";
+const typeColor: Record<string, string> = {
+  tournament: "bg-gold/20 text-gold border-gold/30",
+  olympiad: "bg-purple-500/20 text-purple-400 border-purple-500/30",
+  jee: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
 };
+const typeLabel: Record<string, string> = { tournament: "Tournament", olympiad: "Olympiad", jee: "JEE Mock" };
 
 const Tournament = () => {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
   const navigate = useNavigate();
   const t = useTournament(id, user);
+  const devtoolsLoggedRef = useRef(false);
 
   // Anti-cheat: fullscreen exit detection
   useEffect(() => {
@@ -65,7 +66,20 @@ const Tournament = () => {
     };
   }, [t.started]);
 
-  // MISS-08: Browser back/refresh protection
+  // Anti-cheat: devtools detection heuristic
+  useEffect(() => {
+    if (!t.started) return;
+    const interval = setInterval(() => {
+      if (devtoolsLoggedRef.current) return;
+      if (window.outerWidth - window.innerWidth > 200 || window.outerHeight - window.innerHeight > 200) {
+        devtoolsLoggedRef.current = true;
+        t.logPenalty("devtools");
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [t.started, t.logPenalty]);
+
+  // Browser back/refresh protection
   useEffect(() => {
     if (!t.started) return;
     const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
@@ -136,17 +150,32 @@ const Tournament = () => {
     );
   }
 
+  // Compute category breakdown
+  const categoryBreakdown: Record<string, number> = {};
+  t.questions.forEach(q => {
+    const cat = q.question_bank?.category || "unknown";
+    categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + 1;
+  });
+
   if (!t.started) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Card className="max-w-lg bg-card border-border">
           <CardHeader className="text-center">
-            <CardTitle className="font-display text-2xl">{t.tournament?.title}</CardTitle>
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <CardTitle className="font-display text-2xl">{t.tournament?.title}</CardTitle>
+              {t.tournament?.tournament_type && (
+                <Badge className={typeColor[t.tournament.tournament_type] || typeColor.tournament}>
+                  {typeLabel[t.tournament.tournament_type] || "Tournament"}
+                </Badge>
+              )}
+            </div>
             <p className="text-sm text-muted-foreground mt-1">{t.tournament?.description}</p>
           </CardHeader>
           <CardContent className="space-y-6 text-center">
-            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Users className="h-4 w-4" /> {t.participantCount} participants
+            <div className="flex items-center justify-center gap-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-1"><Users className="h-4 w-4" /> {t.participantCount} participants</div>
+              {t.isRegistered && <span className="text-green-400 text-xs">✓ Registered</span>}
             </div>
             <div className="space-y-2 text-sm text-muted-foreground">
               <div className="flex items-center justify-center gap-2"><Shield className="h-4 w-4 text-gold" /><span>Anti-cheat protocols will be activated</span></div>
@@ -155,9 +184,17 @@ const Tournament = () => {
               <p>• DevTools & copy/paste disabled</p>
               <p>• 2 fullscreen exits = automatic lockout</p>
             </div>
-            <div className="bg-secondary/30 p-4 rounded-lg border border-border space-y-1">
+            <div className="bg-secondary/30 p-4 rounded-lg border border-border space-y-2">
               <p className="text-xs text-muted-foreground">Questions: {t.questions.length}</p>
               <p className="text-xs text-muted-foreground">Time Limit: {t.tournament?.time_limit_minutes} minutes</p>
+              {Object.keys(categoryBreakdown).length > 0 && (
+                <div className="flex flex-wrap gap-1 justify-center">
+                  {Object.entries(categoryBreakdown).map(([cat, count]) => (
+                    <Badge key={cat} variant="outline" className="text-xs">{cat.replace("_", " ")}: {count}</Badge>
+                  ))}
+                </div>
+              )}
+              <p className="text-xs text-muted-foreground mt-2">✅ Correct: +difficulty×5 Elo | ❌ Wrong: −(55−difficulty×5) Elo</p>
             </div>
             <div className="text-gold font-mono text-2xl font-bold">
               {t.hours.toString().padStart(2, "0")}:{t.minutes.toString().padStart(2, "0")}:{t.seconds.toString().padStart(2, "0")} remaining

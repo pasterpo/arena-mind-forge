@@ -8,7 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { MessageSquare, Plus, Pin, Lock, Send, ChevronDown, ChevronUp, Trash2 } from "lucide-react";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import { MessageSquare, Plus, Pin, Lock, Send, ChevronDown, ChevronUp, Trash2, Search } from "lucide-react";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
 
@@ -25,6 +26,8 @@ const Discussions = () => {
   const [creating, setCreating] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState<{ type: "discussion" | "reply"; id: string; discussionId?: string } | null>(null);
 
   const fetchDiscussions = async () => {
     const { data } = await supabase
@@ -45,7 +48,6 @@ const Discussions = () => {
     }
   };
 
-  // DECO-06 FIX: Fetch reply counts
   const fetchReplyCounts = async () => {
     const { data } = await supabase.rpc("get_discussion_reply_counts");
     if (data) {
@@ -63,7 +65,7 @@ const Discussions = () => {
     const channel = supabase
       .channel("discussions-public")
       .on("postgres_changes", { event: "*", schema: "public", table: "discussions" }, () => fetchDiscussions())
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "discussion_replies" }, () => {
+      .on("postgres_changes", { event: "*", schema: "public", table: "discussion_replies" }, () => {
         fetchReplyCounts();
         if (expanded) fetchReplies(expanded);
       })
@@ -110,13 +112,20 @@ const Discussions = () => {
     }
   };
 
-  const deleteDiscussion = async (id: string) => {
-    if (!window.confirm("Delete this discussion and all its replies?")) return;
-    await supabase.from("discussion_replies").delete().eq("discussion_id", id);
-    await supabase.from("discussions").delete().eq("id", id);
-    toast.success("Discussion deleted.");
-    if (expanded === id) setExpanded(null);
-    fetchDiscussions();
+  const handleDeleteConfirm = async () => {
+    if (!confirmDelete) return;
+    if (confirmDelete.type === "discussion") {
+      await supabase.from("discussions").delete().eq("id", confirmDelete.id);
+      toast.success("Discussion deleted.");
+      if (expanded === confirmDelete.id) setExpanded(null);
+      fetchDiscussions();
+    } else {
+      await supabase.from("discussion_replies").delete().eq("id", confirmDelete.id);
+      toast.success("Reply deleted.");
+      if (confirmDelete.discussionId) fetchReplies(confirmDelete.discussionId);
+    }
+    setConfirmDelete(null);
+    fetchReplyCounts();
   };
 
   const togglePin = async (id: string, current: boolean) => {
@@ -130,6 +139,10 @@ const Discussions = () => {
     toast.success(current ? "Unlocked." : "Locked.");
     fetchDiscussions();
   };
+
+  const filteredDiscussions = discussions.filter(d =>
+    !search || d.title.toLowerCase().includes(search.toLowerCase()) || d.body.toLowerCase().includes(search.toLowerCase())
+  );
 
   if (loading) {
     return (
@@ -165,8 +178,13 @@ const Discussions = () => {
         </Dialog>
       </div>
 
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input placeholder="Search discussions..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 bg-card border-border" />
+      </div>
+
       <div className="space-y-3">
-        {discussions.map(d => (
+        {filteredDiscussions.map(d => (
           <Card key={d.id} className={`bg-card border-border ${expanded === d.id ? "border-gold/20" : ""}`}>
             <CardHeader className="pb-2 cursor-pointer" onClick={() => toggleExpand(d.id)}>
               <div className="flex items-center justify-between">
@@ -182,19 +200,23 @@ const Discussions = () => {
                   <span className="text-xs text-muted-foreground">
                     {profiles[d.user_id] || "Anonymous"} • {formatDistanceToNow(new Date(d.created_at), { addSuffix: true })}
                   </span>
-                  {isAdminOrMod && (
-                    <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => togglePin(d.id, d.pinned)}>
-                        <Pin className={`h-3 w-3 ${d.pinned ? "text-gold" : "text-muted-foreground"}`} />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => toggleLock(d.id, d.locked)}>
-                        <Lock className={`h-3 w-3 ${d.locked ? "text-destructive" : "text-muted-foreground"}`} />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => deleteDiscussion(d.id)}>
+                  <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                    {isAdminOrMod && (
+                      <>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => togglePin(d.id, d.pinned)}>
+                          <Pin className={`h-3 w-3 ${d.pinned ? "text-gold" : "text-muted-foreground"}`} />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => toggleLock(d.id, d.locked)}>
+                          <Lock className={`h-3 w-3 ${d.locked ? "text-destructive" : "text-muted-foreground"}`} />
+                        </Button>
+                      </>
+                    )}
+                    {(isAdminOrMod || d.user_id === user?.id) && (
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setConfirmDelete({ type: "discussion", id: d.id })}>
                         <Trash2 className="h-3 w-3 text-destructive" />
                       </Button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                   {expanded === d.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </div>
               </div>
@@ -205,10 +227,18 @@ const Discussions = () => {
                 <p className="text-sm text-foreground whitespace-pre-wrap">{d.body}</p>
                 <div className="space-y-2 pl-4 border-l-2 border-border">
                   {(replies[d.id] || []).map((r: any) => (
-                    <div key={r.id} className="p-3 rounded bg-secondary/30">
-                      <p className="text-xs text-muted-foreground mb-1">
-                        {profiles[r.user_id] || "Anonymous"} • {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
-                      </p>
+                    <div key={r.id} className="p-3 rounded bg-secondary/30 group">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-muted-foreground mb-1">
+                          {profiles[r.user_id] || "Anonymous"} • {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
+                        </p>
+                        {(isAdminOrMod || r.user_id === user?.id) && (
+                          <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => setConfirmDelete({ type: "reply", id: r.id, discussionId: d.id })}>
+                            <Trash2 className="h-3 w-3 text-destructive" />
+                          </Button>
+                        )}
+                      </div>
                       <p className="text-sm text-foreground">{r.body}</p>
                     </div>
                   ))}
@@ -225,15 +255,24 @@ const Discussions = () => {
             )}
           </Card>
         ))}
-        {discussions.length === 0 && (
+        {filteredDiscussions.length === 0 && (
           <Card className="bg-card border-border">
             <CardContent className="py-12 text-center">
               <MessageSquare className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <p className="text-muted-foreground">No discussions yet. Start the conversation!</p>
+              <p className="text-muted-foreground">{search ? "No discussions match your search." : "No discussions yet. Start the conversation!"}</p>
             </CardContent>
           </Card>
         )}
       </div>
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onOpenChange={(open) => { if (!open) setConfirmDelete(null); }}
+        title={confirmDelete?.type === "discussion" ? "Delete Discussion" : "Delete Reply"}
+        description={confirmDelete?.type === "discussion" ? "Delete this discussion and all its replies?" : "Delete this reply?"}
+        onConfirm={handleDeleteConfirm}
+        confirmLabel="Delete"
+      />
     </div>
   );
 };

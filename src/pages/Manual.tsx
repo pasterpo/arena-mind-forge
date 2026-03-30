@@ -51,13 +51,13 @@ const Manual = () => {
             {Array.from({ length: 10 }, (_, i) => i + 1).map((d) => (
               <div key={d} className="bg-secondary/50 rounded-lg p-3 text-center">
                 <div className="text-foreground font-bold text-lg">{d}/10</div>
-                <div className="text-xs text-gold font-semibold">+{d * 5} Elo</div>
+                <div className="text-xs text-green-400 font-semibold">✅ +{d * 5}</div>
+                <div className="text-xs text-destructive font-semibold">❌ -{55 - d * 5}</div>
               </div>
             ))}
           </div>
-          <p className="text-sm"><span className="text-destructive font-semibold">Wrong answers</span> deduct <span className="font-semibold">difficulty × 2</span> Elo. Your rating can never go below 0.</p>
+          <p className="text-sm">Your rating can never go below 0.</p>
 
-          {/* DECO-05 FIX: Tier table matching code */}
           <h3 className="text-foreground font-semibold mt-4">Tier System</h3>
           <div className="rounded-lg border border-border overflow-hidden">
             <Table>
@@ -151,7 +151,7 @@ const Manual = () => {
             <p className="text-foreground font-medium">✅ COMA verified groups can conduct tournaments, olympiads, JEE mocks, and more on Aletheia Arena.</p>
             <p className="text-muted-foreground text-sm">If you are eligible and interested in joining, reach out:</p>
             <a href="https://t.me/aka_young_mathematician" target="_blank" rel="noopener noreferrer">
-              <Button className="gradient-gold text-primary-foreground font-semibold gap-2"><ExternalLink className="h-4 w-4" /> Join COMA on Telegram</Button>
+              <Button className="gradient-gold text-primary-foreground font-semibold gap-2"><ExternalLink className="h-4 w-4" /> Contact Here</Button>
             </a>
           </div>
         </CardContent>
