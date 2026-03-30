@@ -97,7 +97,7 @@ const Tournament = () => {
             <h2 className="font-display text-xl font-bold">{t.tournament?.title}</h2>
             <p className="text-muted-foreground">This tournament hasn't started yet.</p>
             <p className="text-gold font-mono text-lg">
-              Starts: {t.tournament && format(new Date(t.tournament.start_timestamp), "MMM d, yyyy HH:mm")} UTC
+              Starts: {t.tournament && format(new Date(new Date(t.tournament.start_timestamp).getTime() + 5.5 * 60 * 60 * 1000), "MMM d, yyyy HH:mm")} IST
             </p>
             <Link to="/"><Button variant="outline"><ArrowLeft className="h-4 w-4 mr-1" /> Back to Arena</Button></Link>
           </CardContent>
