@@ -1,37 +1,49 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link } from "react-router-dom";
-import { Trophy, Clock, Users, ExternalLink, BookOpen, FlaskConical, Swords, Eye, Search } from "lucide-react";
-import { format } from "date-fns";
+import { Trophy, Clock, Users, ExternalLink, BookOpen, FlaskConical, Swords, Eye, Search, CheckCircle } from "lucide-react";
+import { formatIST } from "@/lib/dateUtils";
 
 const PastTournaments = () => {
+  const { user } = useAuth();
   const [tournaments, setTournaments] = useState<any[]>([]);
   const [participantCounts, setParticipantCounts] = useState<Record<string, number>>({});
+  const [myParticipations, setMyParticipations] = useState<Set<string>>(new Set());
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    const fetch = async () => {
+    const fetchData = async () => {
       const { data } = await supabase
         .from("tournaments")
         .select("*")
         .eq("status", "completed")
         .order("end_timestamp", { ascending: false });
-      if (data) setTournaments(data);
-
-      const { data: parts } = await supabase.from("tournament_participants").select("tournament_id");
-      if (parts) {
-        const counts: Record<string, number> = {};
-        parts.forEach((p: any) => { counts[p.tournament_id] = (counts[p.tournament_id] || 0) + 1; });
-        setParticipantCounts(counts);
+      if (data) {
+        setTournaments(data);
+        // Fetch participant counts only for completed tournaments
+        const ids = data.map(t => t.id);
+        if (ids.length > 0) {
+          const { data: parts } = await supabase.from("tournament_participants").select("tournament_id").in("tournament_id", ids);
+          if (parts) {
+            const counts: Record<string, number> = {};
+            parts.forEach((p: any) => { counts[p.tournament_id] = (counts[p.tournament_id] || 0) + 1; });
+            setParticipantCounts(counts);
+          }
+        }
+      }
+      if (user) {
+        const { data: mine } = await supabase.from("tournament_participants").select("tournament_id").eq("user_id", user.id);
+        if (mine) setMyParticipations(new Set(mine.map((m: any) => m.tournament_id)));
       }
     };
-    fetch();
-  }, []);
+    fetchData();
+  }, [user]);
 
   const typeIcon: Record<string, any> = { tournament: Swords, olympiad: BookOpen, jee: FlaskConical };
   const typeLabel: Record<string, string> = { tournament: "Tournament", olympiad: "Olympiad", jee: "JEE Mock" };
@@ -55,6 +67,7 @@ const PastTournaments = () => {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {items.map(t => {
           const Icon = typeIcon[t.tournament_type] || Swords;
+          const competed = myParticipations.has(t.id);
           return (
             <Card key={t.id} className="bg-card border-border hover:border-gold/20 transition-colors">
               <CardHeader>
@@ -63,7 +76,10 @@ const PastTournaments = () => {
                     <Icon className="h-5 w-5 text-muted-foreground" />
                     <CardTitle className="font-display text-lg">{t.title}</CardTitle>
                   </div>
-                  <Badge variant="outline">{typeLabel[t.tournament_type] || "Tournament"}</Badge>
+                  <div className="flex items-center gap-1">
+                    <Badge variant="outline">{typeLabel[t.tournament_type] || "Tournament"}</Badge>
+                    {competed && <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-xs">✅ Competed</Badge>}
+                  </div>
                 </div>
                 <CardDescription className="line-clamp-2">{t.description}</CardDescription>
               </CardHeader>
@@ -71,7 +87,7 @@ const PastTournaments = () => {
                 <div className="text-sm text-muted-foreground space-y-1">
                   <div className="flex items-center gap-1">
                     <Clock className="h-3 w-3" />
-                    <span>{format(new Date(t.end_timestamp), "MMM d, yyyy")}</span>
+                    <span>{formatIST(t.end_timestamp)}</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Users className="h-3 w-3" />
@@ -119,9 +135,7 @@ const PastTournaments = () => {
 
       <Tabs defaultValue="all" className="space-y-4">
         <TabsList className="bg-secondary border border-border h-auto gap-1 p-1">
-          <TabsTrigger value="all" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground">
-            All
-          </TabsTrigger>
+          <TabsTrigger value="all" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground">All</TabsTrigger>
           <TabsTrigger value="tournament" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground gap-1">
             <Swords className="h-4 w-4" /> Tournaments
           </TabsTrigger>

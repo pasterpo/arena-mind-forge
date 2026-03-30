@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -16,6 +17,13 @@ const Navbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [navUsername, setNavUsername] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("profiles").select("username").eq("id", user.id).single()
+      .then(({ data }) => { if (data) setNavUsername(data.username); });
+  }, [user]);
 
   const navItems = [
     { path: "/", label: "Home", icon: Trophy },
@@ -33,8 +41,8 @@ const Navbar = () => {
   }
 
   const isActive = (path: string) => location.pathname === path;
+  const displayName = navUsername || user?.email || "User";
 
-  // UX-01 FIX: Mobile hamburger menu
   if (isMobile) {
     return (
       <nav className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -116,13 +124,13 @@ const Navbar = () => {
                   <Avatar className="h-8 w-8 border border-border">
                     <AvatarImage src={user.user_metadata?.avatar_url} />
                     <AvatarFallback className="bg-secondary text-secondary-foreground text-xs">
-                      {(user.user_metadata?.name || user.email || "U").charAt(0).toUpperCase()}
+                      {(navUsername || user.user_metadata?.name || user.email || "U").charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem className="text-xs text-muted-foreground">{user.email}</DropdownMenuItem>
+                <DropdownMenuItem className="text-xs text-muted-foreground">{displayName}</DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => navigate("/profile")}><User className="h-4 w-4 mr-2" /> Profile</DropdownMenuItem>
                 <DropdownMenuSeparator />

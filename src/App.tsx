@@ -28,7 +28,6 @@ const ProtectedLayout = () => {
   const [accountStatus, setAccountStatus] = useState<string | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
 
-  // BUG-08 FIX: Check if user is suspended
   useEffect(() => {
     if (!user) { setStatusLoading(false); return; }
     supabase.from("profiles").select("account_status").eq("id", user.id).single()
@@ -94,7 +93,7 @@ const ProtectedLayout = () => {
 const App = () => (
   <ThemeProvider>
     <TooltipProvider>
-      <Sonner />
+      <Sonner position="top-right" richColors closeButton />
       <BrowserRouter>
         <AuthProvider>
           <Routes>

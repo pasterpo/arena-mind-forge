@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { TierBadge } from "@/components/TierBadge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
-import { Trophy, TrendingUp, AlertTriangle, Hash, Swords, Eye, Pencil, Check, X, Target } from "lucide-react";
+import { Trophy, TrendingUp, AlertTriangle, Hash, Swords, Eye, Pencil, Check, X, Target, Loader2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -27,7 +27,9 @@ const Profile = () => {
   const [newUsername, setNewUsername] = useState("");
   const [tournamentStats, setTournamentStats] = useState({ total: 0, wins: 0 });
   const [accuracy, setAccuracy] = useState<number | null>(null);
+  const [categoryAccuracy, setCategoryAccuracy] = useState<Record<string, { correct: number; total: number }>>({});
   const [loading, setLoading] = useState(true);
+  const [winsLoading, setWinsLoading] = useState(false);
 
   useEffect(() => {
     if (!viewingUserId) return;
@@ -54,21 +56,43 @@ const Profile = () => {
           .map((p: any) => p.tournaments);
         setPastTournaments(completed);
 
-        // DECO-03 FIX: Calculate wins
+        setWinsLoading(true);
         let wins = 0;
         for (const t of completed) {
           const { data } = await supabase.rpc("get_tournament_results", { p_tournament_id: t.id });
           if (data && data.length > 0 && data[0].user_id === viewingUserId) wins++;
         }
         setTournamentStats({ total: completed.length, wins });
+        setWinsLoading(false);
       }
 
-      // DECO-04 FIX: Calculate accuracy
+      // Calculate accuracy
       const { data: allSubs } = await supabase.from("submissions").select("is_correct").eq("user_id", viewingUserId);
       if (allSubs && allSubs.length > 0) {
         const correct = allSubs.filter(s => s.is_correct).length;
         setAccuracy(Math.round((correct / allSubs.length) * 100));
       }
+
+      // Category accuracy
+      const categories = ["number_theory", "algebra", "combinatorics", "geometry"];
+      const catAcc: Record<string, { correct: number; total: number }> = {};
+      for (const cat of categories) {
+        const { data: catSubs } = await supabase
+          .from("submissions")
+          .select("is_correct, question_id")
+          .eq("user_id", viewingUserId) as any;
+        // Filter by category using question_bank lookup
+        const { data: catQuestions } = await supabase
+          .from("question_bank")
+          .select("id")
+          .eq("category", cat as any);
+        const catQIds = new Set((catQuestions || []).map((q: any) => q.id));
+        const filtered = (catSubs || []).filter((s: any) => catQIds.has(s.question_id));
+        if (filtered.length > 0) {
+          catAcc[cat] = { correct: filtered.filter((s: any) => s.is_correct).length, total: filtered.length };
+        }
+      }
+      setCategoryAccuracy(catAcc);
 
       setLoading(false);
     };
@@ -77,10 +101,24 @@ const Profile = () => {
 
   const saveUsername = async () => {
     if (!newUsername.trim() || !user) return;
-    const { error } = await supabase.from("profiles").update({ username: newUsername.trim() }).eq("id", user.id);
+    const trimmed = newUsername.trim();
+    if (trimmed.length < 3 || trimmed.length > 20) {
+      toast.error("Username must be 3-20 characters.");
+      return;
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(trimmed)) {
+      toast.error("Username can only contain letters, numbers, _ or -");
+      return;
+    }
+    const { data: existing } = await supabase.from("profiles").select("id").eq("username", trimmed).neq("id", user.id);
+    if (existing && existing.length > 0) {
+      toast.error("This username is already taken.");
+      return;
+    }
+    const { error } = await supabase.from("profiles").update({ username: trimmed }).eq("id", user.id);
     if (error) toast.error(error.message);
     else {
-      setProfile({ ...profile, username: newUsername.trim() });
+      setProfile({ ...profile, username: trimmed });
       setEditingName(false);
       toast.success("Username updated!");
     }
@@ -98,10 +136,16 @@ const Profile = () => {
 
   if (!profile) return <div className="container py-16 text-center text-muted-foreground">Profile not found.</div>;
 
-  const chartData = [
-    { name: "Start", elo: 1200 },
-    ...eloHistory.map((h: any) => ({ name: h.tournaments?.title || "Tournament", elo: h.elo_after })),
-  ];
+  const chartData = eloHistory.length > 0
+    ? [{ name: "Start", elo: 1200 }, ...eloHistory.map((h: any) => ({ name: h.tournaments?.title || "Tournament", elo: h.elo_after }))]
+    : [];
+
+  const categoryNames: Record<string, string> = {
+    number_theory: "Number Theory",
+    algebra: "Algebra",
+    combinatorics: "Combinatorics",
+    geometry: "Geometry",
+  };
 
   return (
     <div className="container py-8 space-y-6">
@@ -123,7 +167,7 @@ const Profile = () => {
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <p className="text-xl font-semibold text-foreground">{profile.username}</p>
+                <p className="text-xl font-semibold text-foreground">{profile.username || "Anonymous"}</p>
                 {isOwnProfile && (
                   <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-foreground" onClick={() => setEditingName(true)}>
                     <Pencil className="h-3 w-3" />
@@ -149,7 +193,9 @@ const Profile = () => {
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-bold font-mono text-foreground">#{profile.global_rank || "—"}</p>
-            <p className="text-xs text-muted-foreground mt-1">{tournamentStats.total} played • {tournamentStats.wins} wins</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {tournamentStats.total} played • {winsLoading ? <Loader2 className="inline h-3 w-3 animate-spin" /> : `${tournamentStats.wins} wins`}
+            </p>
           </CardContent>
         </Card>
         <Card className="bg-card border-border">
@@ -174,12 +220,41 @@ const Profile = () => {
         </Card>
       </div>
 
+      {/* Category Accuracy */}
+      {Object.keys(categoryAccuracy).length > 0 && (
+        <Card className="bg-card border-border">
+          <CardHeader>
+            <CardTitle className="font-display text-lg flex items-center gap-2"><Target className="h-5 w-5 text-gold" /> Accuracy by Category</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 grid-cols-2 md:grid-cols-4">
+              {Object.entries(categoryNames).map(([key, label]) => {
+                const acc = categoryAccuracy[key];
+                return (
+                  <div key={key} className="bg-secondary/30 rounded-lg p-4 text-center border border-border">
+                    <p className="text-sm font-medium text-foreground">{label}</p>
+                    {acc ? (
+                      <>
+                        <p className="text-2xl font-bold font-mono text-gold">{Math.round((acc.correct / acc.total) * 100)}%</p>
+                        <p className="text-xs text-muted-foreground">{acc.correct}/{acc.total} correct</p>
+                      </>
+                    ) : (
+                      <p className="text-lg font-mono text-muted-foreground">—</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="font-display flex items-center gap-2"><Trophy className="h-5 w-5 text-gold" /> Rating Progression</CardTitle>
         </CardHeader>
         <CardContent>
-          {chartData.length > 1 ? (
+          {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(228 20% 18%)" />
@@ -188,13 +263,16 @@ const Profile = () => {
                 <Tooltip
                   contentStyle={{ backgroundColor: "hsl(228 35% 9%)", border: "1px solid hsl(228 20% 18%)", borderRadius: "8px" }}
                   labelStyle={{ color: "hsl(213 31% 95%)" }}
-                  itemStyle={{ color: "hsl(42 55% 58%)" }}
+                  itemStyle={{ color: "hsl(42, 55%, 58%)" }}
                 />
                 <Line type="monotone" dataKey="elo" stroke="hsl(42, 55%, 58%)" strokeWidth={2} dot={{ fill: "hsl(42, 55%, 58%)", r: 4 }} activeDot={{ r: 6 }} />
               </LineChart>
             </ResponsiveContainer>
           ) : (
-            <p className="text-center py-12 text-muted-foreground">No tournament history yet.</p>
+            <div className="text-center py-12">
+              <Trophy className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+              <p className="text-muted-foreground">Your Elo journey starts with your first completed tournament!</p>
+            </div>
           )}
         </CardContent>
       </Card>

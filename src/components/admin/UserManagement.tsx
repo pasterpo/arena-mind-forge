@@ -10,8 +10,10 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { TierBadge } from "@/components/TierBadge";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import { toast } from "sonner";
-import { Ban, ShieldCheck, Edit, Settings2, UserCog, ShieldX } from "lucide-react";
+import { Ban, ShieldCheck, Edit, Settings2, UserCog, ShieldX, Search, User } from "lucide-react";
+import { Link } from "react-router-dom";
 
 interface ModPerms {
   can_create_problems: boolean;
@@ -40,12 +42,14 @@ const permLabels: Record<keyof ModPerms, string> = {
 const UserManagement = () => {
   const { isAdmin, user } = useAuth();
   const [users, setUsers] = useState<any[]>([]);
+  const [search, setSearch] = useState("");
   const [editUser, setEditUser] = useState<any>(null);
   const [newElo, setNewElo] = useState("");
   const [permUser, setPermUser] = useState<any>(null);
   const [perms, setPerms] = useState<ModPerms>(defaultPerms);
   const [permDialogOpen, setPermDialogOpen] = useState(false);
   const [eloDialogOpen, setEloDialogOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{ title: string; description: string; onConfirm: () => void } | null>(null);
 
   const fetchUsers = async () => {
     const { data } = await supabase
@@ -58,14 +62,19 @@ const UserManagement = () => {
   useEffect(() => { fetchUsers(); }, []);
 
   const handleBan = async (userId: string, currentStatus: string) => {
-    if (!window.confirm(currentStatus === "active" ? "Ban this user?" : "Unban this user?")) return;
     const newStatus = currentStatus === "active" ? "suspended" : "active";
-    await supabase.from("profiles").update({ account_status: newStatus as any }).eq("id", userId);
-    toast.success(`User ${newStatus === "suspended" ? "banned" : "unbanned"}.`);
-    fetchUsers();
+    setConfirmAction({
+      title: currentStatus === "active" ? "Ban User" : "Unban User",
+      description: currentStatus === "active" ? "This will suspend the user's account." : "This will reactivate the user's account.",
+      onConfirm: async () => {
+        await supabase.from("profiles").update({ account_status: newStatus as any }).eq("id", userId);
+        toast.success(`User ${newStatus === "suspended" ? "banned" : "unbanned"}.`);
+        fetchUsers();
+        setConfirmAction(null);
+      },
+    });
   };
 
-  // BUG-05 FIX: Support both moderator and admin promotion
   const handlePromote = async (userId: string, role: "moderator" | "admin") => {
     const { error } = await supabase.from("user_roles").insert({ user_id: userId, role: role as any });
     if (error) {
@@ -74,20 +83,26 @@ const UserManagement = () => {
       return;
     }
     if (role === "moderator") {
-      await supabase.from("moderator_permissions" as any).upsert({ user_id: userId, ...defaultPerms } as any);
+      await supabase.from("moderator_permissions" as any).upsert({ user_id: userId, ...defaultPerms } as any, { onConflict: "user_id" } as any);
     }
     toast.success(`User promoted to ${role}!`);
     fetchUsers();
   };
 
   const handleDemote = async (userId: string, role: "moderator" | "admin") => {
-    if (!window.confirm(`Remove ${role} role from this user?`)) return;
-    await supabase.from("user_roles").delete().eq("user_id", userId).eq("role", role as any);
-    if (role === "moderator") {
-      await supabase.from("moderator_permissions" as any).delete().eq("user_id", userId);
-    }
-    toast.success(`${role} role removed.`);
-    fetchUsers();
+    setConfirmAction({
+      title: `Remove ${role} role`,
+      description: `This will remove the ${role} role from this user.`,
+      onConfirm: async () => {
+        await supabase.from("user_roles").delete().eq("user_id", userId).eq("role", role as any);
+        if (role === "moderator") {
+          await supabase.from("moderator_permissions" as any).delete().eq("user_id", userId);
+        }
+        toast.success(`${role} role removed.`);
+        fetchUsers();
+        setConfirmAction(null);
+      },
+    });
   };
 
   const handleEloAdjust = async () => {
@@ -113,13 +128,26 @@ const UserManagement = () => {
     if (!permUser) return;
     await supabase.from("moderator_permissions" as any).upsert({
       user_id: permUser.id, ...perms,
-    } as any);
-    toast.success("Permissions updated.");
+    } as any, { onConflict: "user_id" } as any);
+    toast.success(`Permissions saved for ${permUser.username || "user"}.`);
     setPermDialogOpen(false);
+    fetchUsers();
   };
+
+  const filteredUsers = users.filter(u =>
+    !search || (u.username || "").toLowerCase().includes(search.toLowerCase()) || (u.email || "").toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input placeholder="Search users..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10 bg-card border-border" />
+        </div>
+        <span className="text-sm text-muted-foreground">Showing {filteredUsers.length} of {users.length} users</span>
+      </div>
+
       <div className="rounded-lg border border-border bg-card overflow-x-auto">
         <Table>
           <TableHeader>
@@ -135,7 +163,7 @@ const UserManagement = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {users.map(u => {
+            {filteredUsers.map(u => {
               const roles = (u.user_roles || []).map((r: any) => r.role);
               const isMod = roles.includes("moderator");
               const isAdminUser = roles.includes("admin");
@@ -144,11 +172,15 @@ const UserManagement = () => {
                   <TableCell className="font-medium">{u.username || "—"}</TableCell>
                   <TableCell className="text-muted-foreground text-sm">{u.email}</TableCell>
                   <TableCell>
-                    {roles.map((r: string) => (
-                      <Badge key={r} variant="outline" className={`mr-1 text-xs ${r === "admin" ? "border-gold/50 text-gold" : r === "moderator" ? "border-blue-400/50 text-blue-400" : ""}`}>
-                        {r}
-                      </Badge>
-                    ))}
+                    {roles.length === 0 || (roles.length === 1 && roles[0] === "competitor") ? (
+                      <Badge variant="outline" className="text-xs text-muted-foreground">competitor</Badge>
+                    ) : (
+                      roles.map((r: string) => (
+                        <Badge key={r} variant="outline" className={`mr-1 text-xs ${r === "admin" ? "border-gold/50 text-gold" : r === "moderator" ? "border-blue-400/50 text-blue-400" : ""}`}>
+                          {r}
+                        </Badge>
+                      ))
+                    )}
                   </TableCell>
                   <TableCell className="font-mono font-bold">{u.elo_rating}</TableCell>
                   <TableCell><TierBadge elo={u.elo_rating} /></TableCell>
@@ -194,21 +226,32 @@ const UserManagement = () => {
                         </Button>
                       )}
 
-                      <Button variant="ghost" size="icon" onClick={() => { setEditUser(u); setNewElo(String(u.elo_rating)); setEloDialogOpen(true); }}>
+                      <Button variant="ghost" size="icon" onClick={() => { setEditUser(u); setNewElo(String(u.elo_rating)); setEloDialogOpen(true); }} title="Adjust Elo">
                         <Edit className="h-4 w-4 text-muted-foreground" />
                       </Button>
+
+                      <Link to={`/profile/${u.id}`}>
+                        <Button variant="ghost" size="icon" title="View Profile">
+                          <User className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                      </Link>
                     </div>
                   </TableCell>
                 </TableRow>
               );
             })}
+            {filteredUsers.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">No users found.</TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </div>
 
       <Dialog open={eloDialogOpen} onOpenChange={setEloDialogOpen}>
         <DialogContent className="bg-card border-border">
-          <DialogHeader><DialogTitle>Adjust Elo for {editUser?.username}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Adjust Elo for {editUser?.username || "user"}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>New Elo Rating</Label>
@@ -223,7 +266,7 @@ const UserManagement = () => {
         <DialogContent className="bg-card border-border max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <UserCog className="h-5 w-5 text-blue-400" /> Permissions — {permUser?.username}
+              <UserCog className="h-5 w-5 text-blue-400" /> Permissions — {permUser?.username || "user"}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
@@ -238,6 +281,14 @@ const UserManagement = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!confirmAction}
+        onOpenChange={(open) => { if (!open) setConfirmAction(null); }}
+        title={confirmAction?.title || ""}
+        description={confirmAction?.description || ""}
+        onConfirm={confirmAction?.onConfirm || (() => {})}
+      />
     </div>
   );
 };
