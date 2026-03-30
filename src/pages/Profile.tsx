@@ -79,9 +79,15 @@ const Profile = () => {
       for (const cat of categories) {
         const { data: catSubs } = await supabase
           .from("submissions")
-          .select("is_correct, question_bank!inner(category)")
-          .eq("user_id", viewingUserId)
-          .eq("question_bank.category" as any, cat);
+          .select("is_correct, question_id")
+          .eq("user_id", viewingUserId) as any;
+        // Filter by category using question_bank lookup
+        const { data: catQuestions } = await supabase
+          .from("question_bank")
+          .select("id")
+          .eq("category", cat as any);
+        const catQIds = new Set((catQuestions || []).map((q: any) => q.id));
+        const filtered = (catSubs || []).filter((s: any) => catQIds.has(s.question_id));
         if (catSubs && catSubs.length > 0) {
           catAcc[cat] = { correct: catSubs.filter((s: any) => s.is_correct).length, total: catSubs.length };
         }
