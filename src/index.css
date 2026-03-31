@@ -163,6 +163,13 @@
     -ms-user-select: none;
     user-select: none;
   }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 }
 
 /* Anti-cheat text selection is handled per-page via .no-select class */
