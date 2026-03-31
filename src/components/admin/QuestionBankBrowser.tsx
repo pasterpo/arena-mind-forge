@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,11 +8,16 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Slider } from "@/components/ui/slider";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import { toast } from "sonner";
 import { Trash2, Eye, EyeOff, Library, Pencil } from "lucide-react";
 import { format } from "date-fns";
 
-const QuestionBankBrowser = () => {
+interface QuestionBankBrowserProps {
+  onSaved?: () => void;
+}
+
+const QuestionBankBrowser = ({ onSaved }: QuestionBankBrowserProps) => {
   const [questions, setQuestions] = useState<any[]>([]);
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [visibilityFilter, setVisibilityFilter] = useState("all");
@@ -21,6 +26,7 @@ const QuestionBankBrowser = () => {
   const [editDifficulty, setEditDifficulty] = useState([5]);
   const [editCategory, setEditCategory] = useState("algebra");
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const fetchQuestions = async () => {
     let query = supabase.from("question_bank").select("*").order("created_at", { ascending: false });
@@ -37,13 +43,17 @@ const QuestionBankBrowser = () => {
     await supabase.from("question_bank").update({ visibility: next as any }).eq("id", id);
     toast.success(`Question ${next === "published" ? "published" : "set to draft"}.`);
     fetchQuestions();
+    onSaved?.();
   };
 
-  const deleteQuestion = async (id: string) => {
-    if (!window.confirm("Delete this question permanently?")) return;
-    await supabase.from("question_bank").delete().eq("id", id);
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    await supabase.from("tournament_questions").delete().eq("question_id", deleteTarget);
+    await supabase.from("question_bank").delete().eq("id", deleteTarget);
     toast.success("Question deleted.");
+    setDeleteTarget(null);
     fetchQuestions();
+    onSaved?.();
   };
 
   const openEdit = (q: any) => {
@@ -64,6 +74,7 @@ const QuestionBankBrowser = () => {
     toast.success("Question updated.");
     setEditDialogOpen(false);
     fetchQuestions();
+    onSaved?.();
   };
 
   const categoryColors: Record<string, string> = {
@@ -115,7 +126,10 @@ const QuestionBankBrowser = () => {
                 <span>{q.answer_type}</span>
               </div>
               <p className="text-xs text-muted-foreground">Answer: <span className="font-mono text-foreground">{q.correct_answer}</span></p>
-              <p className="text-xs text-muted-foreground">{format(new Date(q.created_at), "MMM d, yyyy")}</p>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{format(new Date(q.created_at), "MMM d, yyyy")}</span>
+                <span className="font-mono">✅+{q.difficulty_weight * 5} ❌-{55 - q.difficulty_weight * 5}</span>
+              </div>
               <div className="flex gap-1 pt-2">
                 <Button variant="ghost" size="sm" onClick={() => toggleVisibility(q.id, q.visibility)}>
                   {q.visibility === "published" ? <EyeOff className="h-4 w-4 mr-1" /> : <Eye className="h-4 w-4 mr-1" />}
@@ -124,7 +138,7 @@ const QuestionBankBrowser = () => {
                 <Button variant="ghost" size="sm" onClick={() => openEdit(q)}>
                   <Pencil className="h-4 w-4 mr-1" /> Edit
                 </Button>
-                <Button variant="ghost" size="sm" onClick={() => deleteQuestion(q.id)} className="text-destructive">
+                <Button variant="ghost" size="sm" onClick={() => setDeleteTarget(q.id)} className="text-destructive">
                   <Trash2 className="h-4 w-4 mr-1" /> Delete
                 </Button>
               </div>
@@ -170,6 +184,15 @@ const QuestionBankBrowser = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+        title="Delete Question"
+        description="Delete this question permanently? It will be removed from all tournaments it is assigned to."
+        onConfirm={handleDeleteConfirm}
+        confirmLabel="Delete"
+      />
     </div>
   );
 };

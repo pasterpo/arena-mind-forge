@@ -182,7 +182,7 @@ const Admin = () => {
         </TabsList>
 
         {showForge && <TabsContent value="forge"><ProblemForge onSaved={refreshStats} /></TabsContent>}
-        {showBank && <TabsContent value="bank"><QuestionBankBrowser /></TabsContent>}
+        {showBank && <TabsContent value="bank"><QuestionBankBrowser onSaved={refreshStats} /></TabsContent>}
         {showTournaments && (
           <>
             <TabsContent value="tournaments"><TournamentPanel fixedType="tournament" /></TabsContent>
