@@ -138,60 +138,75 @@ const CompetitionList = ({ tournamentType, title, subtitle }: CompetitionListPro
   const renderCard = (t: any, isActive: boolean) => {
     const isRegistered = myRegistrations.has(t.id);
     const qCount = questionCounts[t.id] || 0;
+    const startDate = new Date(t.start_timestamp);
+    const countdown = isActive ? formatCountdown(t.end_timestamp) : formatCountdown(t.start_timestamp);
+    const isStartingSoon = !isActive && countdown !== "NOW";
+
     return (
-      <div key={t.id} className="min-w-[320px] max-w-[380px] flex-shrink-0 snap-start">
-        <Card className={`bg-card border-border hover:border-gold/20 transition-all h-full ${isActive ? "border-gold/20 shadow-lg shadow-gold/5" : ""}`}>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <Icon className="h-5 w-5 text-gold shrink-0" />
-                <CardTitle className="font-display text-lg truncate">{t.title}</CardTitle>
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <Badge className={typeColor[t.tournament_type] || typeColor.tournament}>
-                  {typeLabel[t.tournament_type] || "Tournament"}
-                </Badge>
-                {isActive && <Badge className="bg-gold text-gold-foreground animate-pulse-gold">LIVE</Badge>}
-              </div>
-            </div>
-            <CardDescription className="line-clamp-2">{t.description}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="flex items-center gap-4 text-sm text-muted-foreground flex-wrap">
-              <div className="flex items-center gap-1">
-                <Clock className="h-4 w-4" />
-                {isActive ? (
-                  <span>Ends: <span className="text-gold font-mono font-bold">{formatCountdown(t.end_timestamp)}</span></span>
-                ) : (
-                  <span>{formatIST(t.start_timestamp)}</span>
-                )}
-              </div>
-              <div className="flex items-center gap-1">
-                <Users className="h-4 w-4" />
-                <span>{participantCounts[t.id] || 0}</span>
-              </div>
-              {qCount > 0 && (
-                <div className="flex items-center gap-1">
-                  <HelpCircle className="h-4 w-4" />
-                  <span>{qCount} Q</span>
+      <div key={t.id} className="min-w-[360px] max-w-[440px] flex-shrink-0 snap-start">
+        <Card className={`bg-card border-border hover:border-gold/20 transition-all h-full ${isActive ? "border-gold/30 shadow-lg shadow-gold/5" : ""}`}>
+          <CardContent className="p-5 space-y-4">
+            {/* Header with title and badge */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="h-10 w-10 rounded-lg bg-gold/10 border border-gold/20 flex items-center justify-center shrink-0">
+                  <Icon className="h-5 w-5 text-gold" />
                 </div>
-              )}
+                <div className="min-w-0">
+                  <h3 className="font-display font-semibold text-foreground text-base truncate">{t.title}</h3>
+                  {t.description && (
+                    <p className="text-sm text-muted-foreground line-clamp-1 mt-0.5">{t.description}</p>
+                  )}
+                </div>
+              </div>
+              <Badge className={`shrink-0 ${isActive ? "bg-gold text-gold-foreground animate-pulse-gold" : typeColor[t.tournament_type] || typeColor.tournament}`}>
+                {isActive ? "LIVE" : typeLabel[t.tournament_type] || "Upcoming"}
+              </Badge>
             </div>
 
-            {!isActive && (
-              <div className="text-gold font-mono text-xl font-bold tracking-wider">
-                ⏱ {formatCountdown(t.start_timestamp)}
+            {/* Info grid like reference image */}
+            <div className="grid grid-cols-4 gap-3 border border-border rounded-lg p-3 bg-secondary/20">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Start Time</p>
+                <p className="text-sm font-medium text-foreground">{startDate.toLocaleDateString("en-IN", { month: "short", day: "numeric" })}</p>
+                <p className="text-xs text-muted-foreground">{startDate.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", hour12: true })}</p>
               </div>
-            )}
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Duration</p>
+                <p className="text-sm font-medium text-foreground">{t.time_limit_minutes} min</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Questions</p>
+                <p className="text-sm font-medium text-foreground">{qCount || "—"}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Participants</p>
+                <p className="text-sm font-medium text-foreground">{participantCounts[t.id] || 0}</p>
+              </div>
+            </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
+            {/* Countdown */}
+            {isActive ? (
+              <div className="bg-destructive/10 border border-destructive/20 rounded-lg px-4 py-2 flex items-center gap-2">
+                <span className="text-sm">⏰</span>
+                <span className="text-sm font-medium text-destructive">Ends in: {countdown}</span>
+              </div>
+            ) : isStartingSoon ? (
+              <div className="bg-gold/10 border border-gold/20 rounded-lg px-4 py-2 flex items-center gap-2">
+                <span className="text-sm">⏰</span>
+                <span className="text-sm font-medium text-gold">Starts in: {countdown}</span>
+              </div>
+            ) : null}
+
+            {/* Actions */}
+            <div className="flex items-center gap-2">
               {isActive ? (
-                <Button onClick={() => navigate(`/tournament/${t.id}`)} className="bg-gold text-gold-foreground hover:bg-gold/90">
+                <Button onClick={() => navigate(`/tournament/${t.id}`)} className="bg-gold text-gold-foreground hover:bg-gold/90 flex-1">
                   <Swords className="h-4 w-4 mr-1" /> Enter Battle
                 </Button>
               ) : isRegistered ? (
-                <div className="flex items-center gap-2">
-                  <Button disabled variant="outline" className="text-green-400 border-green-500/30">
+                <div className="flex items-center gap-2 flex-1">
+                  <Button disabled variant="outline" className="text-green-400 border-green-500/30 flex-1">
                     <CheckCircle className="h-4 w-4 mr-1" /> Registered
                   </Button>
                   <Button onClick={() => unregister(t.id)} variant="ghost" size="sm" className="text-destructive text-xs">
@@ -199,18 +214,17 @@ const CompetitionList = ({ tournamentType, title, subtitle }: CompetitionListPro
                   </Button>
                 </div>
               ) : (
-                <Button onClick={() => registerForTournament(t.id)} variant="outline" className="hover:border-gold/50 hover:text-gold">
+                <Button onClick={() => registerForTournament(t.id)} variant="outline" className="hover:border-gold/50 hover:text-gold flex-1">
                   <UserPlus className="h-4 w-4 mr-1" /> Register
                 </Button>
               )}
-              {t.telegram_link && (
-                <a href={t.telegram_link} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:underline flex items-center gap-1">
-                  <ExternalLink className="h-3 w-3" /> Telegram
-                </a>
-              )}
             </div>
 
-            <div className="text-xs text-muted-foreground">Duration: {t.time_limit_minutes} min</div>
+            {t.telegram_link && (
+              <a href={t.telegram_link} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-400 hover:underline flex items-center gap-1">
+                <ExternalLink className="h-3 w-3" /> Telegram Group
+              </a>
+            )}
           </CardContent>
         </Card>
       </div>
