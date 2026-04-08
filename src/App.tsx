@@ -13,7 +13,7 @@ import Profile from "./pages/Profile";
 import Tournament from "./pages/Tournament";
 import Results from "./pages/Results";
 import PastTournaments from "./pages/PastTournaments";
-import Discussions from "./pages/Discussions";
+
 import Admin from "./pages/Admin";
 import Tournaments from "./pages/Tournaments";
 import Olympiads from "./pages/Olympiads";
@@ -81,7 +81,7 @@ const ProtectedLayout = () => {
         <Route path="/tournament/:id" element={<Tournament />} />
         <Route path="/results/:id" element={<Results />} />
         <Route path="/past" element={<PastTournaments />} />
-        <Route path="/discussions" element={<Discussions />} />
+        
         <Route path="/admin" element={<Admin />} />
         <Route path="/manual" element={<Manual />} />
         <Route path="*" element={<NotFound />} />

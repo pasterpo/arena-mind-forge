@@ -10,9 +10,9 @@ import { Button } from "@/components/ui/button";
 import ProblemForge from "@/components/admin/ProblemForge";
 import TournamentPanel from "@/components/admin/TournamentPanel";
 import UserManagement from "@/components/admin/UserManagement";
-import DiscussionPanel from "@/components/admin/DiscussionPanel";
+
 import QuestionBankBrowser from "@/components/admin/QuestionBankBrowser";
-import { Shield, Swords, Users, ImageIcon, MessageSquare, Library, Zap, BarChart3, Ban, Trophy, Activity, FileText } from "lucide-react";
+import { Shield, Swords, Users, ImageIcon, Library, Zap, BarChart3, Ban, Trophy, Activity, FileText } from "lucide-react";
 import { toast } from "sonner";
 
 const Admin = () => {
@@ -51,7 +51,7 @@ const Admin = () => {
   const showBank = perms.can_edit_problems || perms.can_delete_problems;
   const showTournaments = perms.can_create_tournaments || perms.can_edit_tournaments;
   const showUsers = isAdmin || perms.can_manage_users;
-  const showDiscussions = perms.can_view_discussions || perms.can_moderate_discussions;
+  
 
   const handleAutoComplete = async () => {
     try {
@@ -174,11 +174,6 @@ const Admin = () => {
               Users
             </TabsTrigger>
           )}
-          {showDiscussions && (
-            <TabsTrigger value="discussions" className="data-[state=active]:bg-gold data-[state=active]:text-gold-foreground">
-              Discussions
-            </TabsTrigger>
-          )}
         </TabsList>
 
         {showForge && <TabsContent value="forge"><ProblemForge onSaved={refreshStats} /></TabsContent>}
@@ -191,7 +186,7 @@ const Admin = () => {
           </>
         )}
         {showUsers && <TabsContent value="users"><UserManagement /></TabsContent>}
-        {showDiscussions && <TabsContent value="discussions"><DiscussionPanel /></TabsContent>}
+        
       </Tabs>
     </div>
   );
