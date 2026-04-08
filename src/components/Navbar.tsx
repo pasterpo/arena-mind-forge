@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Shield, Trophy, User, LogOut, Swords, MessageSquare, History, BookOpen, FlaskConical, HelpCircle, Sun, Moon, Menu } from "lucide-react";
+import { Shield, Trophy, User, LogOut, Swords, History, BookOpen, FlaskConical, HelpCircle, Sun, Moon, Menu } from "lucide-react";
 
 const Navbar = () => {
   const { user, isAdminOrMod, signOut } = useAuth();
@@ -32,7 +32,7 @@ const Navbar = () => {
     { path: "/jee", label: "JEE Mocks", icon: FlaskConical },
     { path: "/leaderboard", label: "Leaderboard", icon: Trophy },
     { path: "/past", label: "Past", icon: History },
-    { path: "/discussions", label: "Discuss", icon: MessageSquare },
+    
     { path: "/manual", label: "Manual", icon: HelpCircle },
   ];
 

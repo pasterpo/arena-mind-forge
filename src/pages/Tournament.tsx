@@ -291,14 +291,12 @@ const Tournament = () => {
                 ))}
               </div>
 
-              {progress < total && (
-                <div className="pt-2 text-center">
-                  <Button variant="outline" size="sm" className="text-destructive border-destructive/30 hover:bg-destructive/10"
-                    onClick={() => { if (window.confirm(`Submit all ${progress} answered questions and finish?`)) t.handleAutoSubmit(); }}>
-                    Finish & Submit All ({progress}/{total})
-                  </Button>
-                </div>
-              )}
+              <div className="pt-4 text-center border-t border-border">
+                <Button size="lg" className="bg-destructive text-destructive-foreground hover:bg-destructive/90 gap-2"
+                  onClick={() => { if (window.confirm(`Finish now? ${progress}/${total} answered. Unanswered questions will be marked wrong.`)) t.handleAutoSubmit(); }}>
+                  🏁 Finish Exam ({progress}/{total} answered)
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ) : (
